@@ -1,0 +1,22 @@
+name = "ios-security-tracker"
+main = "src/index.ts"
+compatibility_date = "2024-09-25"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["0 0 * * 1"]  # Every Monday at midnight UTC
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ios-vulnerabilities-db"
+database_id = "placeholder-will-be-updated-after-creation"
+
+[vars]
+ENVIRONMENT = "production"
+NVD_API_BASE_URL = "https://services.nvd.nist.gov/rest/json"
+APPLE_SECURITY_BASE_URL = "https://support.apple.com"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "placeholder-will-be-updated-after-creation"
+preview_id = "placeholder-will-be-updated-after-creation"

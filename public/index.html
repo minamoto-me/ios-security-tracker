@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iOS Security Vulnerability Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <h1><i class="fas fa-shield-alt"></i> iOS Security Tracker</h1>
+            <p>Real-time iOS vulnerability monitoring with CVSS scoring</p>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <!-- Stats Dashboard -->
+            <section class="stats-section">
+                <h2>Dashboard</h2>
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Loading stats...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Search and Filters -->
+            <section class="search-section">
+                <h2>Vulnerability Search</h2>
+                <div class="search-controls">
+                    <div class="search-input-group">
+                        <input type="text" id="searchInput" placeholder="Search CVE ID or description...">
+                        <button id="searchBtn" class="btn-primary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                    <div class="filter-group">
+                        <select id="severityFilter">
+                            <option value="">All Severities</option>
+                            <option value="CRITICAL">Critical</option>
+                            <option value="HIGH">High</option>
+                            <option value="MEDIUM">Medium</option>
+                            <option value="LOW">Low</option>
+                        </select>
+                        <button id="clearFilters" class="btn-secondary">
+                            <i class="fas fa-times"></i> Clear
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Vulnerabilities List -->
+            <section class="vulnerabilities-section">
+                <h2>Recent Vulnerabilities</h2>
+                <div id="vulnerabilitiesList" class="vulnerabilities-list loading">
+                    <div class="loading-spinner">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>Loading vulnerabilities...</span>
+                    </div>
+                </div>
+                <div class="pagination" id="pagination" style="display: none;">
+                    <button id="prevBtn" class="btn-secondary" disabled>
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <span id="pageInfo"></span>
+                    <button id="nextBtn" class="btn-secondary" disabled>
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </section>
+
+            <!-- System Status -->
+            <section class="status-section">
+                <h2>System Status</h2>
+                <div id="systemStatus" class="status-info loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Checking system status...</span>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>© 2025 iOS Security Vulnerability Tracker | Data from Apple Security & NVD</p>
+            <p>
+                <a href="/api" target="_blank"><i class="fas fa-code"></i> API Documentation</a> |
+                <a href="/api/health" target="_blank"><i class="fas fa-heartbeat"></i> Health Check</a>
+            </p>
+        </div>
+    </footer>
+
+    <!-- Vulnerability Detail Modal -->
+    <div id="vulnerabilityModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="vulnerabilityDetails"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

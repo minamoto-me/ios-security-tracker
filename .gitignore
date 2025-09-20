@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Wrangler
+.wrangler/
+
+# MacOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Runtime
+.cache/
+.tmp/
+
+# Backup files
+*.backup
+*.bak
+
+# Test coverage
+coverage/
+
+# Database exports
+*.sql
+*.db
