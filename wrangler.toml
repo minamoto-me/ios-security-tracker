@@ -15,6 +15,7 @@ database_id = "5e9bfa15-0864-49bb-8e9f-a9720a14cbc2"
 ENVIRONMENT = "production"
 NVD_API_BASE_URL = "https://services.nvd.nist.gov/rest/json"
 APPLE_SECURITY_BASE_URL = "https://support.apple.com"
+NVD_API_KEY = "5a06e8fb-c9b3-46fe-971f-19bdeee609d0"
 
 [[kv_namespaces]]
 binding = "CACHE"

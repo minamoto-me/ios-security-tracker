@@ -65,6 +65,18 @@ export class ApiHandler {
         return await this.populateSampleData(corsHeaders);
       }
 
+      if (method === 'POST' && path === '/api/test-apple-parser') {
+        return await this.testAppleParser(corsHeaders);
+      }
+
+      if (method === 'POST' && path === '/api/test-apple-links') {
+        return await this.testAppleLinksParser(corsHeaders);
+      }
+
+      if (method === 'POST' && path === '/api/process-latest-ios') {
+        return await this.processLatestIOS(corsHeaders);
+      }
+
       // Not found
       return new Response(
         JSON.stringify({ error: 'Not found', path }),
@@ -369,6 +381,234 @@ export class ApiHandler {
 
       const response = {
         message: 'Failed to populate sample data',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private async testAppleParser(headers: Record<string, string>): Promise<Response> {
+    try {
+      console.log('Testing Apple security page parser...');
+
+      // Import the AppleSecurityParser
+      const { AppleSecurityParser } = await import('../services/apple-security-parser');
+
+      // Test with the same page you used in Python: HT122066
+      const testUrl = 'https://support.apple.com/en-us/122066';
+
+      console.log(`Fetching Apple security page: ${testUrl}`);
+      const response = await fetch(testUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${testUrl}: ${response.status}`);
+      }
+
+      const html = await response.text();
+      console.log(`Fetched ${html.length} characters from Apple security page`);
+
+      // Parse the security content
+      const parsedData = AppleSecurityParser.parseSecurityContent(html, '18.1');
+
+      const result = {
+        message: 'Apple parser test completed',
+        test_url: testUrl,
+        html_length: html.length,
+        vulnerabilities_found: parsedData.vulnerabilities.length,
+        vulnerabilities: parsedData.vulnerabilities,
+        release_date: parsedData.releaseDate,
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(result, null, 2), { headers });
+
+    } catch (error) {
+      console.error('Apple parser test failed:', error);
+
+      const response = {
+        message: 'Apple parser test failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private async testAppleLinksParser(headers: Record<string, string>): Promise<Response> {
+    try {
+      console.log('Testing Apple security links parser...');
+
+      // Import the VulnerabilityScanner to access the link extraction method
+      const { VulnerabilityScanner } = await import('../services/vulnerability-scanner');
+
+      // Test with main Apple security page
+      const testUrl = 'https://support.apple.com/en-us/100100';
+
+      console.log(`Fetching Apple main security page: ${testUrl}`);
+      const response = await fetch(testUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${testUrl}: ${response.status}`);
+      }
+
+      const html = await response.text();
+      console.log(`Fetched ${html.length} characters from main Apple security page`);
+
+      // Create scanner to test link extraction
+      const scanner = new VulnerabilityScanner(this.env);
+
+      // Use reflection to call private method (for testing purposes)
+      const extractMethod = (scanner as any).extractIOSReleaseLinks;
+      const iosReleases = extractMethod.call(scanner, html);
+
+      const result = {
+        message: 'Apple links parser test completed',
+        test_url: testUrl,
+        html_length: html.length,
+        ios_releases_found: iosReleases.length,
+        ios_releases: iosReleases.slice(0, 10), // Show first 10 releases
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(result, null, 2), { headers });
+
+    } catch (error) {
+      console.error('Apple links parser test failed:', error);
+
+      const response = {
+        message: 'Apple links parser test failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private async processLatestIOS(headers: Record<string, string>): Promise<Response> {
+    try {
+      console.log('Processing latest iOS security release...');
+
+      // Import required services
+      const { AppleSecurityParser } = await import('../services/apple-security-parser');
+      const { NVDClient } = await import('../services/nvd-client');
+
+      // Process iOS 18.3 (the latest release we know has CVEs)
+      const version = '18.3';
+      const url = 'https://support.apple.com/en-us/122066';
+
+      console.log(`Processing iOS ${version} from ${url}`);
+
+      // Fetch the iOS security page
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: ${response.status}`);
+      }
+
+      const html = await response.text();
+      console.log(`Fetched ${html.length} characters from iOS security page`);
+
+      // Parse vulnerabilities
+      const parsedData = AppleSecurityParser.parseSecurityContent(html, version);
+      console.log(`Found ${parsedData.vulnerabilities.length} vulnerabilities`);
+
+      // Insert iOS release record
+      const releaseId = await this.repository.insertIOSRelease({
+        version: parsedData.version,
+        release_date: parsedData.releaseDate,
+        security_content_url: url,
+      });
+
+      console.log(`Inserted iOS release ${version} with ID ${releaseId}`);
+
+      // Process vulnerabilities (limit to first 5 for testing)
+      const nvdClient = new NVDClient(this.env);
+      const processedVulns = [];
+      const vulnsToProcess = parsedData.vulnerabilities.slice(0, 5);
+
+      for (const vuln of vulnsToProcess) {
+        try {
+          console.log(`Processing ${vuln.cveId}...`);
+
+          // Get CVSS data from NVD
+          const cvssData = await nvdClient.getCVSSData(vuln.cveId);
+
+          // Create vulnerability record
+          const vulnerability = {
+            id: vuln.cveId,
+            cve_id: vuln.cveId,
+            description: vuln.description,
+            severity: cvssData?.severity || 'UNKNOWN',
+            cvss_score: cvssData?.score || null,
+            cvss_vector: cvssData?.vector || null,
+            ios_versions_affected: parsedData.version,
+            discovered_date: parsedData.releaseDate,
+          };
+
+          // Insert into database
+          await this.repository.insertVulnerability(vulnerability);
+
+          // Link to release
+          await this.repository.linkVulnerabilityToRelease(vuln.cveId, releaseId);
+
+          processedVulns.push({
+            cve_id: vuln.cveId,
+            cvss_score: cvssData?.score,
+            severity: cvssData?.severity,
+          });
+
+          console.log(`Processed ${vuln.cveId}: ${cvssData?.severity} (${cvssData?.score})`);
+
+        } catch (error) {
+          console.error(`Failed to process ${vuln.cveId}:`, error);
+        }
+      }
+
+      const result = {
+        message: 'Latest iOS processing completed',
+        ios_version: version,
+        release_id: releaseId,
+        total_vulnerabilities: parsedData.vulnerabilities.length,
+        processed_vulnerabilities: processedVulns.length,
+        processed_details: processedVulns,
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(result, null, 2), { headers });
+
+    } catch (error) {
+      console.error('Latest iOS processing failed:', error);
+
+      const response = {
+        message: 'Latest iOS processing failed',
         error: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
       };

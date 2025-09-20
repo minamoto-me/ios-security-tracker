@@ -7,24 +7,67 @@ export class AppleSecurityParser {
   static parseSecurityContent(html: string, version: string): AppleSecurityRelease {
     const vulnerabilities: Array<{ cveId: string; description: string }> = [];
 
-    // Extract CVE entries from the HTML
-    const cveMatches = html.match(this.CVE_REGEX) || [];
-    const uniqueCves = [...new Set(cveMatches)];
+    // Apple security pages use <p class="gb-paragraph"> elements containing CVE information
+    // Parse HTML to find these elements (simplified approach without full DOM parser)
+    const gbParagraphPattern = /<p[^>]*class="[^"]*gb-paragraph[^"]*"[^>]*>(.*?)<\/p>/gi;
+    const cvePattern = /CVE-\d{4}-\d{4,7}/g;
 
-    // Parse each CVE entry with its description
-    for (const cveId of uniqueCves) {
-      const description = this.extractCVEDescription(html, cveId);
-      if (description) {
-        vulnerabilities.push({
-          cveId,
-          description: this.cleanDescription(description),
-        });
+    let match;
+    const foundCves = new Set<string>();
+
+    // Find all gb-paragraph elements
+    while ((match = gbParagraphPattern.exec(html)) !== null) {
+      const paragraphContent = match[1];
+
+      // Look for CVE IDs in this paragraph
+      const cveMatches = paragraphContent.match(cvePattern);
+      if (cveMatches) {
+        for (const cveId of cveMatches) {
+          if (!foundCves.has(cveId)) {
+            foundCves.add(cveId);
+
+            // Extract description from the paragraph content
+            const description = this.extractDescriptionFromParagraph(paragraphContent, cveId);
+            if (description) {
+              vulnerabilities.push({
+                cveId,
+                description: this.cleanDescription(description),
+              });
+              console.log(`Found CVE ${cveId}: ${description.substring(0, 100)}...`);
+            }
+          }
+        }
+      }
+    }
+
+    // Fallback: also check for CVEs in any paragraph elements if gb-paragraph didn't work
+    if (vulnerabilities.length === 0) {
+      const anyParagraphPattern = /<p[^>]*>(.*?)<\/p>/gi;
+      while ((match = anyParagraphPattern.exec(html)) !== null) {
+        const paragraphContent = match[1];
+        const cveMatches = paragraphContent.match(cvePattern);
+        if (cveMatches) {
+          for (const cveId of cveMatches) {
+            if (!foundCves.has(cveId)) {
+              foundCves.add(cveId);
+              const description = this.extractDescriptionFromParagraph(paragraphContent, cveId);
+              if (description) {
+                vulnerabilities.push({
+                  cveId,
+                  description: this.cleanDescription(description),
+                });
+                console.log(`Found CVE ${cveId} (fallback): ${description.substring(0, 100)}...`);
+              }
+            }
+          }
+        }
       }
     }
 
     // Extract release date from the page
     const releaseDate = this.extractReleaseDate(html, version);
 
+    console.log(`Parsed ${vulnerabilities.length} vulnerabilities for iOS ${version}`);
     return {
       version,
       releaseDate,
@@ -71,6 +114,31 @@ export class AppleSecurityParser {
     }
 
     return null;
+  }
+
+  private static extractDescriptionFromParagraph(paragraphContent: string, cveId: string): string | null {
+    // Remove HTML tags from paragraph content
+    const cleanContent = paragraphContent.replace(/<[^>]*>/g, ' ').replace(/&[^;]+;/g, ' ');
+
+    // Look for the CVE and extract surrounding text as description
+    const cveIndex = cleanContent.indexOf(cveId);
+    if (cveIndex === -1) return null;
+
+    // Extract a reasonable amount of text around the CVE as description
+    // Usually the vulnerability description follows the CVE ID
+    const beforeCve = cleanContent.substring(Math.max(0, cveIndex - 50), cveIndex).trim();
+    const afterCve = cleanContent.substring(cveIndex + cveId.length, cveIndex + cveId.length + 200).trim();
+
+    // Combine and clean up the description
+    let description = afterCve;
+
+    // If there's no meaningful text after CVE, try before
+    if (!description || description.length < 10) {
+      description = beforeCve + ' ' + afterCve;
+    }
+
+    // Clean up and return
+    return description.trim() || 'Security vulnerability addressed in this update.';
   }
 
   private static extractReleaseDate(html: string, version: string): string {
