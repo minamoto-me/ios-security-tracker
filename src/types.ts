@@ -77,4 +77,5 @@ export interface Env {
   ENVIRONMENT: string;
   NVD_API_BASE_URL: string;
   APPLE_SECURITY_BASE_URL: string;
+  NVD_API_KEY?: string; // Optional NVD API key for higher rate limits
 }

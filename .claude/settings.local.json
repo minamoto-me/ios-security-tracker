@@ -5,7 +5,9 @@
       "Bash(npx wrangler d1 execute:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npm run deploy:*)"
+      "Bash(npm run deploy:*)",
+      "WebFetch(domain:support.apple.com)",
+      "Bash(npx wrangler pages deploy:*)"
     ],
     "deny": [],
     "ask": []

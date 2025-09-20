@@ -3,10 +3,15 @@ import { CVSSData, NVDVulnerability, Env } from '../types';
 export class NVDClient {
   private baseUrl: string;
   private cache: KVNamespace;
+  private apiKey?: string;
+  private rateLimitDelay: number;
 
   constructor(env: Env) {
     this.baseUrl = env.NVD_API_BASE_URL;
     this.cache = env.CACHE;
+    this.apiKey = env.NVD_API_KEY; // Optional API key from environment
+    // Rate limiting: 6 seconds without API key, 0.6 seconds with API key
+    this.rateLimitDelay = this.apiKey ? 600 : 6000;
   }
 
   async getCVSSData(cveId: string): Promise<CVSSData | null> {
@@ -19,16 +24,27 @@ export class NVDClient {
         return cached as CVSSData;
       }
 
-      console.log(`Fetching CVSS data for ${cveId} from NVD`);
+      console.log(`Fetching CVSS data for ${cveId} from NVD (API key: ${this.apiKey ? 'yes' : 'no'})`);
+
+      // Rate limiting: wait before making request
+      if (this.rateLimitDelay > 0) {
+        console.log(`Rate limiting: waiting ${this.rateLimitDelay}ms before NVD request`);
+        await new Promise(resolve => setTimeout(resolve, this.rateLimitDelay));
+      }
 
       // Fetch from NVD API
       const url = `${this.baseUrl}/cves/2.0?cveId=${encodeURIComponent(cveId)}`;
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'iOS-Security-Tracker/1.0',
-          'Accept': 'application/json',
-        },
-      });
+      const headers: Record<string, string> = {
+        'User-Agent': 'iOS-Security-Tracker/1.0',
+        'Accept': 'application/json',
+      };
+
+      // Add API key if available
+      if (this.apiKey) {
+        headers['apiKey'] = this.apiKey;
+      }
+
+      const response = await fetch(url, { headers });
 
       if (!response.ok) {
         if (response.status === 404) {
