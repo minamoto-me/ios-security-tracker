@@ -2,7 +2,7 @@
 
 class VulnerabilityTracker {
     constructor() {
-        this.apiBase = '/api';
+        this.apiBase = 'https://ios-security-tracker.graceliu.workers.dev/api';
         this.currentPage = 0;
         this.pageSize = 20;
         this.currentFilters = {

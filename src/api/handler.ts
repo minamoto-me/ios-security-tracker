@@ -3,8 +3,10 @@ import { VulnerabilityRepository } from '../database/repository';
 
 export class ApiHandler {
   private repository: VulnerabilityRepository;
+  private env: Env;
 
   constructor(env: Env) {
+    this.env = env;
     this.repository = new VulnerabilityRepository(env);
   }
 
@@ -57,6 +59,10 @@ export class ApiHandler {
 
       if (method === 'POST' && path === '/api/scan/trigger') {
         return await this.triggerManualScan(corsHeaders);
+      }
+
+      if (method === 'POST' && path === '/api/populate-sample-data') {
+        return await this.populateSampleData(corsHeaders);
       }
 
       // Not found
@@ -205,15 +211,172 @@ export class ApiHandler {
   }
 
   private async triggerManualScan(headers: Record<string, string>): Promise<Response> {
-    // This would trigger a manual scan in a real implementation
-    // For now, we'll return a placeholder response
-    const response = {
-      message: 'Manual scan request received',
-      note: 'Scans are normally triggered weekly via cron schedule',
-      scheduled_time: 'Every Monday at midnight UTC',
-      timestamp: new Date().toISOString(),
-    };
+    try {
+      // Import the VulnerabilityScanner
+      const { VulnerabilityScanner } = await import('../services/vulnerability-scanner');
 
-    return new Response(JSON.stringify(response), { headers });
+      const startTime = Date.now();
+      console.log('Manual vulnerability scan started at:', new Date().toISOString());
+
+      // Create and run vulnerability scanner
+      const scanner = new VulnerabilityScanner(this.env);
+      const scanResult = await scanner.runWeeklyVulnerabilityScan();
+
+      const executionTime = Date.now() - startTime;
+      console.log(`Manual scan completed successfully in ${executionTime}ms`);
+      console.log('Scan results:', scanResult);
+
+      const response = {
+        message: 'Manual scan completed successfully',
+        execution_time_ms: executionTime,
+        scan_results: scanResult,
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), { headers });
+
+    } catch (error) {
+      console.error('Manual scan failed:', error);
+
+      const response = {
+        message: 'Manual scan failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private async populateSampleData(headers: Record<string, string>): Promise<Response> {
+    try {
+      console.log('Populating sample vulnerability data...');
+
+      // Sample vulnerabilities based on real iOS CVEs
+      const sampleVulnerabilities = [
+        {
+          id: 'CVE-2024-44308',
+          cve_id: 'CVE-2024-44308',
+          description: 'A buffer overflow issue was addressed with improved memory handling.',
+          severity: 'HIGH',
+          cvss_score: 7.8,
+          cvss_vector: 'CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H',
+          ios_versions_affected: 'iOS 18.1',
+          discovered_date: '2024-10-28',
+        },
+        {
+          id: 'CVE-2024-44309',
+          cve_id: 'CVE-2024-44309',
+          description: 'A memory corruption issue was addressed with improved input validation.',
+          severity: 'CRITICAL',
+          cvss_score: 9.8,
+          cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+          ios_versions_affected: 'iOS 18.1',
+          discovered_date: '2024-10-28',
+        },
+        {
+          id: 'CVE-2024-44310',
+          cve_id: 'CVE-2024-44310',
+          description: 'An out-of-bounds read issue was addressed with improved bounds checking.',
+          severity: 'MEDIUM',
+          cvss_score: 5.5,
+          cvss_vector: 'CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N',
+          ios_versions_affected: 'iOS 18.0, iOS 17.7',
+          discovered_date: '2024-09-16',
+        },
+        {
+          id: 'CVE-2024-40866',
+          cve_id: 'CVE-2024-40866',
+          description: 'A logic issue was addressed with improved state management.',
+          severity: 'HIGH',
+          cvss_score: 8.1,
+          cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N',
+          ios_versions_affected: 'iOS 17.6',
+          discovered_date: '2024-07-29',
+        },
+        {
+          id: 'CVE-2024-40857',
+          cve_id: 'CVE-2024-40857',
+          description: 'A use-after-free issue was addressed with improved memory management.',
+          severity: 'CRITICAL',
+          cvss_score: 9.8,
+          cvss_vector: 'CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H',
+          ios_versions_affected: 'iOS 17.6',
+          discovered_date: '2024-07-29',
+        },
+      ];
+
+      let inserted = 0;
+      for (const vuln of sampleVulnerabilities) {
+        try {
+          await this.repository.insertVulnerability(vuln);
+          inserted++;
+          console.log(`Inserted vulnerability: ${vuln.cve_id}`);
+        } catch (error) {
+          console.warn(`Failed to insert ${vuln.cve_id}:`, error);
+        }
+      }
+
+      // Also insert some iOS releases
+      const sampleReleases = [
+        {
+          version: '18.1',
+          release_date: '2024-10-28',
+          security_content_url: 'https://support.apple.com/en-us/121238',
+        },
+        {
+          version: '18.0',
+          release_date: '2024-09-16',
+          security_content_url: 'https://support.apple.com/en-us/121250',
+        },
+        {
+          version: '17.7',
+          release_date: '2024-09-16',
+          security_content_url: 'https://support.apple.com/en-us/121251',
+        },
+        {
+          version: '17.6',
+          release_date: '2024-07-29',
+          security_content_url: 'https://support.apple.com/en-us/121234',
+        },
+      ];
+
+      let releasesInserted = 0;
+      for (const release of sampleReleases) {
+        try {
+          await this.repository.insertIOSRelease(release);
+          releasesInserted++;
+          console.log(`Inserted iOS release: ${release.version}`);
+        } catch (error) {
+          console.warn(`Failed to insert iOS ${release.version}:`, error);
+        }
+      }
+
+      const response = {
+        message: 'Sample data populated successfully',
+        vulnerabilities_inserted: inserted,
+        releases_inserted: releasesInserted,
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), { headers });
+
+    } catch (error) {
+      console.error('Failed to populate sample data:', error);
+
+      const response = {
+        message: 'Failed to populate sample data',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
   }
 }

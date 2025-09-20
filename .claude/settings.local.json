@@ -3,7 +3,9 @@
     "allow": [
       "WebSearch",
       "Bash(npx wrangler d1 execute:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run deploy:*)"
     ],
     "deny": [],
     "ask": []
