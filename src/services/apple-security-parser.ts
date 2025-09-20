@@ -135,7 +135,7 @@ export class AppleSecurityParser {
   }
 
   static validateSecurityRelease(release: AppleSecurityRelease): boolean {
-    return (
+    return Boolean(
       release.version &&
       release.releaseDate &&
       release.vulnerabilities.length > 0 &&

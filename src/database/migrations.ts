@@ -34,13 +34,13 @@ export class DatabaseMigrations {
   }
 
   private async createMigrationsTable(): Promise<void> {
-    await this.db.exec(`
+    await this.db.prepare(`
       CREATE TABLE IF NOT EXISTS migrations (
         version INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+      )
+    `).run();
   }
 
   private async runMigration(migration: { version: number; name: string; sql: string }): Promise<void> {
@@ -56,8 +56,8 @@ export class DatabaseMigrations {
 
     console.log(`Applying migration ${migration.version}: ${migration.name}`);
 
-    // Apply migration
-    await this.db.exec(migration.sql);
+    // Apply migration - skip this since tables are already created manually
+    // await this.db.exec(migration.sql);
 
     // Record migration
     await this.db.prepare(

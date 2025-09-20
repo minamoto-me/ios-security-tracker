@@ -9,7 +9,7 @@ crons = ["0 0 * * 1"]  # Every Monday at midnight UTC
 [[d1_databases]]
 binding = "DB"
 database_name = "ios-vulnerabilities-db"
-database_id = "placeholder-will-be-updated-after-creation"
+database_id = "5e9bfa15-0864-49bb-8e9f-a9720a14cbc2"
 
 [vars]
 ENVIRONMENT = "production"
@@ -18,5 +18,5 @@ APPLE_SECURITY_BASE_URL = "https://support.apple.com"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "placeholder-will-be-updated-after-creation"
-preview_id = "placeholder-will-be-updated-after-creation"
+id = "bb1efa3c20084c7aa9e579db73199b1b"
+preview_id = "63bc419fd1514d60b9ddd0ce759a4d3a"

@@ -56,7 +56,7 @@ export class VulnerabilityRepository {
     params.push(limit, offset);
 
     const result = await this.db.prepare(query).bind(...params).all();
-    return result.results as Vulnerability[];
+    return (result.results as unknown) as Vulnerability[];
   }
 
   async getVulnerabilityCount(severity?: string, searchTerm?: string): Promise<number> {
@@ -103,7 +103,7 @@ export class VulnerabilityRepository {
       'SELECT * FROM ios_releases ORDER BY release_date DESC LIMIT ?'
     ).bind(limit).all();
 
-    return result.results as IOSRelease[];
+    return (result.results as unknown) as IOSRelease[];
   }
 
   async insertProcessingLog(log: Omit<ProcessingLog, 'id' | 'run_date'>): Promise<void> {
@@ -129,7 +129,7 @@ export class VulnerabilityRepository {
       'SELECT * FROM processing_logs ORDER BY run_date DESC LIMIT ?'
     ).bind(limit).all();
 
-    return result.results as ProcessingLog[];
+    return (result.results as unknown) as ProcessingLog[];
   }
 
   async linkVulnerabilityToRelease(vulnerabilityId: string, releaseId: number): Promise<void> {
@@ -147,7 +147,7 @@ export class VulnerabilityRepository {
       ORDER BY v.cvss_score DESC
     `).bind(releaseId).all();
 
-    return result.results as Vulnerability[];
+    return (result.results as unknown) as Vulnerability[];
   }
 
   async getVulnerabilityStats(): Promise<{

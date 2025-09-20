@@ -46,12 +46,12 @@ export class NVDClient {
 
       const data = await response.json();
 
-      if (!data.vulnerabilities || data.vulnerabilities.length === 0) {
+      if (!data || typeof data !== 'object' || !('vulnerabilities' in data) || !Array.isArray((data as any).vulnerabilities) || (data as any).vulnerabilities.length === 0) {
         console.warn(`No vulnerability data found for ${cveId}`);
         return null;
       }
 
-      const vulnerability: NVDVulnerability = data.vulnerabilities[0];
+      const vulnerability: NVDVulnerability = (data as any).vulnerabilities[0];
       const cvssData = this.extractCVSSData(vulnerability);
 
       if (cvssData) {
@@ -133,11 +133,11 @@ export class NVDClient {
 
       const data = await response.json();
 
-      if (!data.vulnerabilities || data.vulnerabilities.length === 0) {
+      if (!data || typeof data !== 'object' || !('vulnerabilities' in data) || !Array.isArray((data as any).vulnerabilities) || (data as any).vulnerabilities.length === 0) {
         return null;
       }
 
-      const vulnerability: NVDVulnerability = data.vulnerabilities[0];
+      const vulnerability: NVDVulnerability = (data as any).vulnerabilities[0];
       const descriptions = vulnerability.cve.descriptions;
 
       // Find English description
