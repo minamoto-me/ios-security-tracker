@@ -37,7 +37,10 @@ export class VulnerabilityRepository {
     limit = 100,
     offset = 0,
     severity?: string,
-    searchTerm?: string
+    searchTerm?: string,
+    iosVersion?: string,
+    sortBy = 'discovered_date',
+    sortOrder = 'desc'
   ): Promise<Vulnerability[]> {
     let query = 'SELECT * FROM vulnerabilities WHERE 1=1';
     const params: any[] = [];
@@ -52,14 +55,40 @@ export class VulnerabilityRepository {
       params.push(`%${searchTerm}%`, `%${searchTerm}%`);
     }
 
-    query += ' ORDER BY discovered_date DESC, cvss_score DESC LIMIT ? OFFSET ?';
+    if (iosVersion) {
+      query += ' AND ios_versions_affected LIKE ?';
+      params.push(`%${iosVersion}%`);
+    }
+
+    // Add sorting
+    const validSortColumns = ['discovered_date', 'cvss_score', 'severity', 'cve_id'];
+    const validSortOrders = ['asc', 'desc'];
+
+    const finalSortBy = validSortColumns.includes(sortBy) ? sortBy : 'discovered_date';
+    const finalSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : 'desc';
+
+    // Special handling for severity sorting
+    if (finalSortBy === 'severity') {
+      const severityOrder = finalSortOrder === 'desc'
+        ? "CASE severity WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4 ELSE 5 END"
+        : "CASE severity WHEN 'LOW' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'HIGH' THEN 3 WHEN 'CRITICAL' THEN 4 ELSE 5 END";
+      query += ` ORDER BY ${severityOrder}, cvss_score DESC`;
+    } else {
+      query += ` ORDER BY ${finalSortBy} ${finalSortOrder.toUpperCase()}`;
+      // Add secondary sort for consistency
+      if (finalSortBy !== 'cvss_score') {
+        query += ', cvss_score DESC';
+      }
+    }
+
+    query += ' LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
     const result = await this.db.prepare(query).bind(...params).all();
     return (result.results as unknown) as Vulnerability[];
   }
 
-  async getVulnerabilityCount(severity?: string, searchTerm?: string): Promise<number> {
+  async getVulnerabilityCount(severity?: string, searchTerm?: string, iosVersion?: string): Promise<number> {
     let query = 'SELECT COUNT(*) as count FROM vulnerabilities WHERE 1=1';
     const params: any[] = [];
 
@@ -71,6 +100,11 @@ export class VulnerabilityRepository {
     if (searchTerm) {
       query += ' AND (description LIKE ? OR cve_id LIKE ?)';
       params.push(`%${searchTerm}%`, `%${searchTerm}%`);
+    }
+
+    if (iosVersion) {
+      query += ' AND ios_versions_affected LIKE ?';
+      params.push(`%${iosVersion}%`);
     }
 
     const result = await this.db.prepare(query).bind(...params).first();

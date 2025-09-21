@@ -77,6 +77,18 @@ export class ApiHandler {
         return await this.processLatestIOS(corsHeaders);
       }
 
+      if (method === 'POST' && path === '/api/debug-full-scan') {
+        return await this.debugFullScan(corsHeaders);
+      }
+
+      if (method === 'POST' && path === '/api/test-latest-versions') {
+        return await this.testLatestVersions(corsHeaders);
+      }
+
+      if (method === 'POST' && path === '/api/process-all-latest-cves') {
+        return await this.processAllLatestCVEs(corsHeaders);
+      }
+
       // Not found
       return new Response(
         JSON.stringify({ error: 'Not found', path }),
@@ -101,10 +113,13 @@ export class ApiHandler {
     const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0);
     const severity = searchParams.get('severity') || undefined;
     const search = searchParams.get('search') || undefined;
+    const iosVersion = searchParams.get('ios_version') || undefined;
+    const sortBy = searchParams.get('sort_by') || 'discovered_date';
+    const sortOrder = searchParams.get('sort_order') || 'desc';
 
     const [vulnerabilities, total] = await Promise.all([
-      this.repository.getAllVulnerabilities(limit, offset, severity, search),
-      this.repository.getVulnerabilityCount(severity, search),
+      this.repository.getAllVulnerabilities(limit, offset, severity, search, iosVersion, sortBy, sortOrder),
+      this.repository.getVulnerabilityCount(severity, search, iosVersion),
     ]);
 
     const response = {
@@ -118,6 +133,9 @@ export class ApiHandler {
       filters: {
         severity,
         search,
+        ios_version: iosVersion,
+        sort_by: sortBy,
+        sort_order: sortOrder,
       },
     };
 
@@ -618,5 +636,338 @@ export class ApiHandler {
         headers
       });
     }
+  }
+
+  private async debugFullScan(headers: Record<string, string>): Promise<Response> {
+    try {
+      console.log('Debug: Running full vulnerability scan workflow...');
+
+      // Import the VulnerabilityScanner
+      const { VulnerabilityScanner } = await import('../services/vulnerability-scanner');
+
+      const scanner = new VulnerabilityScanner(this.env);
+
+      // Step 1: Get main page and extract links
+      console.log('Step 1: Fetching main Apple security page...');
+      const mainPageResponse = await fetch('https://support.apple.com/en-us/100100', {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      if (!mainPageResponse.ok) {
+        throw new Error(`Failed to fetch main page: ${mainPageResponse.status}`);
+      }
+
+      const mainPageHtml = await mainPageResponse.text();
+      console.log(`Fetched ${mainPageHtml.length} characters from main page`);
+
+      // Step 2: Extract iOS release links
+      console.log('Step 2: Extracting iOS release links...');
+      const extractMethod = (scanner as any).extractIOSReleaseLinks;
+      const allReleases = extractMethod.call(scanner, mainPageHtml);
+      console.log(`Found ${allReleases.length} total iOS releases`);
+
+      // Step 3: Show version sorting
+      const top10Releases = allReleases.slice(0, 10);
+      console.log('Step 3: Top 10 releases by version:');
+
+      const debugInfo = {
+        message: 'Debug full scan workflow',
+        step1_main_page_length: mainPageHtml.length,
+        step2_total_releases_found: allReleases.length,
+        step3_top_10_releases: top10Releases,
+        step4_processing_results: [],
+        timestamp: new Date().toISOString(),
+      };
+
+      // Step 4: Try to fetch details for top 3 releases
+      console.log('Step 4: Testing release details fetching...');
+      for (let i = 0; i < Math.min(3, allReleases.length); i++) {
+        const release = allReleases[i];
+        try {
+          console.log(`Testing iOS ${release.version} from ${release.url}`);
+
+          const releaseResponse = await fetch(release.url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+          });
+
+          const success = releaseResponse.ok;
+          const contentLength = success ? (await releaseResponse.text()).length : 0;
+
+          (debugInfo.step4_processing_results as any[]).push({
+            version: release.version,
+            url: release.url,
+            fetch_success: success,
+            status_code: releaseResponse.status,
+            content_length: contentLength,
+          });
+
+          console.log(`iOS ${release.version}: ${success ? 'SUCCESS' : 'FAILED'} (${releaseResponse.status})`);
+
+        } catch (error) {
+          console.error(`Failed to test iOS ${release.version}:`, error);
+          (debugInfo.step4_processing_results as any[]).push({
+            version: release.version,
+            url: release.url,
+            fetch_success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+
+      return new Response(JSON.stringify(debugInfo, null, 2), { headers });
+
+    } catch (error) {
+      console.error('Debug full scan failed:', error);
+
+      const response = {
+        message: 'Debug full scan failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private async testLatestVersions(headers: Record<string, string>): Promise<Response> {
+    try {
+      console.log('Testing latest iOS versions for CVE content...');
+
+      // Import the AppleSecurityParser
+      const { AppleSecurityParser } = await import('../services/apple-security-parser');
+
+      // Test the top 3 latest versions: iOS 26, iOS 18.7, iOS 18.6.2
+      const versionsToTest = [
+        { version: '26', url: 'https://support.apple.com/en-us/125108' },
+        { version: '18.7', url: 'https://support.apple.com/en-us/125109' },
+        { version: '18.6.2', url: 'https://support.apple.com/en-us/124925' },
+      ];
+
+      const results = [];
+
+      for (const versionInfo of versionsToTest) {
+        try {
+          console.log(`Testing iOS ${versionInfo.version}...`);
+
+          const response = await fetch(versionInfo.url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch: ${response.status}`);
+          }
+
+          const html = await response.text();
+          const parsedData = AppleSecurityParser.parseSecurityContent(html, versionInfo.version);
+
+          results.push({
+            version: versionInfo.version,
+            url: versionInfo.url,
+            success: true,
+            html_length: html.length,
+            vulnerabilities_found: parsedData.vulnerabilities.length,
+            release_date: parsedData.releaseDate,
+            sample_cves: parsedData.vulnerabilities.slice(0, 3).map(v => v.cveId),
+          });
+
+          console.log(`iOS ${versionInfo.version}: ${parsedData.vulnerabilities.length} CVEs found`);
+
+        } catch (error) {
+          console.error(`Failed to test iOS ${versionInfo.version}:`, error);
+          results.push({
+            version: versionInfo.version,
+            url: versionInfo.url,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+
+      const response = {
+        message: 'Latest versions CVE testing completed',
+        results: results,
+        recommendation: this.getLatestVersionRecommendation(results),
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response, null, 2), { headers });
+
+    } catch (error) {
+      console.error('Latest versions test failed:', error);
+
+      const response = {
+        message: 'Latest versions test failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private getLatestVersionRecommendation(results: any[]): string {
+    const validResults = results.filter(r => r.success && r.vulnerabilities_found > 0);
+    if (validResults.length === 0) {
+      return 'No versions with vulnerabilities found';
+    }
+
+    // Sort by version number (highest first)
+    validResults.sort((a, b) => {
+      const aNum = parseFloat(a.version);
+      const bNum = parseFloat(b.version);
+      return bNum - aNum;
+    });
+
+    const latest = validResults[0];
+    return `Recommended latest version to process: iOS ${latest.version} (${latest.vulnerabilities_found} CVEs)`;
+  }
+
+  private async processAllLatestCVEs(headers: Record<string, string>): Promise<Response> {
+    try {
+      console.log('Processing ALL CVEs from the latest iOS version with CVSS scores...');
+
+      // Import required services
+      const { AppleSecurityParser } = await import('../services/apple-security-parser');
+      const { NVDClient } = await import('../services/nvd-client');
+
+      // Process iOS 26 (the actual latest version with most vulnerabilities)
+      const version = '26';
+      const url = 'https://support.apple.com/en-us/125108';
+
+      console.log(`Processing ALL CVEs from iOS ${version}...`);
+
+      // Fetch the iOS security page
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: ${response.status}`);
+      }
+
+      const html = await response.text();
+      console.log(`Fetched ${html.length} characters`);
+
+      // Parse all vulnerabilities
+      const parsedData = AppleSecurityParser.parseSecurityContent(html, version);
+      console.log(`Found ${parsedData.vulnerabilities.length} total vulnerabilities`);
+
+      // Clear existing data first to avoid conflicts
+      await this.env.DB.prepare("DELETE FROM vulnerability_releases").run();
+      await this.env.DB.prepare("DELETE FROM vulnerabilities WHERE ios_versions_affected = ?").bind(version).run();
+
+      // Insert iOS release record
+      const releaseId = await this.repository.insertIOSRelease({
+        version: parsedData.version,
+        release_date: parsedData.releaseDate,
+        security_content_url: url,
+      });
+
+      console.log(`Inserted iOS release ${version} with ID ${releaseId}`);
+
+      // Process ALL vulnerabilities with CVSS scores
+      const nvdClient = new NVDClient(this.env);
+      const processedVulns = [];
+      const failedVulns = [];
+
+      for (let i = 0; i < parsedData.vulnerabilities.length; i++) {
+        const vuln = parsedData.vulnerabilities[i];
+        try {
+          console.log(`Processing ${i + 1}/${parsedData.vulnerabilities.length}: ${vuln.cveId}...`);
+
+          // Get CVSS data from NVD
+          const cvssData = await nvdClient.getCVSSData(vuln.cveId);
+
+          // Create vulnerability record
+          const vulnerability = {
+            id: vuln.cveId,
+            cve_id: vuln.cveId,
+            description: vuln.description,
+            severity: cvssData?.severity || 'UNKNOWN',
+            cvss_score: cvssData?.score || null,
+            cvss_vector: cvssData?.vector || null,
+            ios_versions_affected: parsedData.version,
+            discovered_date: parsedData.releaseDate,
+          };
+
+          // Insert into database
+          await this.repository.insertVulnerability(vulnerability);
+
+          // Link to release
+          await this.repository.linkVulnerabilityToRelease(vuln.cveId, releaseId);
+
+          processedVulns.push({
+            cve_id: vuln.cveId,
+            cvss_score: cvssData?.score,
+            severity: cvssData?.severity,
+          });
+
+          console.log(`✅ ${vuln.cveId}: ${cvssData?.severity} (${cvssData?.score})`);
+
+        } catch (error) {
+          console.error(`❌ Failed to process ${vuln.cveId}:`, error);
+          failedVulns.push({
+            cve_id: vuln.cveId,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      }
+
+      const result = {
+        message: 'Latest iOS CVE processing completed',
+        ios_version: version,
+        release_id: releaseId,
+        total_vulnerabilities: parsedData.vulnerabilities.length,
+        successfully_processed: processedVulns.length,
+        failed_processing: failedVulns.length,
+        success_rate: `${Math.round((processedVulns.length / parsedData.vulnerabilities.length) * 100)}%`,
+        severity_breakdown: this.getSeverityBreakdown(processedVulns),
+        failed_cves: failedVulns.slice(0, 5), // Show first 5 failures
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(result, null, 2), { headers });
+
+    } catch (error) {
+      console.error('Latest CVE processing failed:', error);
+
+      const response = {
+        message: 'Latest CVE processing failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private getSeverityBreakdown(vulns: any[]): Record<string, number> {
+    const breakdown: Record<string, number> = {};
+    vulns.forEach(v => {
+      const severity = v.severity || 'UNKNOWN';
+      breakdown[severity] = (breakdown[severity] || 0) + 1;
+    });
+    return breakdown;
   }
 }

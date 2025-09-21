@@ -7,7 +7,10 @@ class VulnerabilityTracker {
         this.pageSize = 20;
         this.currentFilters = {
             severity: '',
-            search: ''
+            search: '',
+            ios_version: '',
+            sort_by: 'discovered_date',
+            sort_order: 'desc'
         };
 
         this.init();
@@ -25,6 +28,9 @@ class VulnerabilityTracker {
         const searchBtn = document.getElementById('searchBtn');
         const searchInput = document.getElementById('searchInput');
         const severityFilter = document.getElementById('severityFilter');
+        const iosVersionFilter = document.getElementById('iosVersionFilter');
+        const sortByFilter = document.getElementById('sortByFilter');
+        const sortOrderFilter = document.getElementById('sortOrderFilter');
         const clearFilters = document.getElementById('clearFilters');
 
         searchBtn?.addEventListener('click', () => this.performSearch());
@@ -32,6 +38,9 @@ class VulnerabilityTracker {
             if (e.key === 'Enter') this.performSearch();
         });
         severityFilter?.addEventListener('change', () => this.performSearch());
+        iosVersionFilter?.addEventListener('change', () => this.performSearch());
+        sortByFilter?.addEventListener('change', () => this.performSearch());
+        sortOrderFilter?.addEventListener('change', () => this.performSearch());
         clearFilters?.addEventListener('click', () => this.clearFilters());
 
         // Pagination
@@ -136,6 +145,15 @@ class VulnerabilityTracker {
             }
             if (this.currentFilters.search) {
                 params.append('search', this.currentFilters.search);
+            }
+            if (this.currentFilters.ios_version) {
+                params.append('ios_version', this.currentFilters.ios_version);
+            }
+            if (this.currentFilters.sort_by) {
+                params.append('sort_by', this.currentFilters.sort_by);
+            }
+            if (this.currentFilters.sort_order) {
+                params.append('sort_order', this.currentFilters.sort_order);
             }
 
             const response = await fetch(`${this.apiBase}/vulnerabilities?${params}`);
@@ -418,9 +436,15 @@ class VulnerabilityTracker {
     performSearch() {
         const searchInput = document.getElementById('searchInput');
         const severityFilter = document.getElementById('severityFilter');
+        const iosVersionFilter = document.getElementById('iosVersionFilter');
+        const sortByFilter = document.getElementById('sortByFilter');
+        const sortOrderFilter = document.getElementById('sortOrderFilter');
 
         this.currentFilters.search = searchInput?.value?.trim() || '';
         this.currentFilters.severity = severityFilter?.value || '';
+        this.currentFilters.ios_version = iosVersionFilter?.value || '';
+        this.currentFilters.sort_by = sortByFilter?.value || 'discovered_date';
+        this.currentFilters.sort_order = sortOrderFilter?.value || 'desc';
         this.currentPage = 0;
 
         this.loadVulnerabilities();
@@ -429,11 +453,23 @@ class VulnerabilityTracker {
     clearFilters() {
         const searchInput = document.getElementById('searchInput');
         const severityFilter = document.getElementById('severityFilter');
+        const iosVersionFilter = document.getElementById('iosVersionFilter');
+        const sortByFilter = document.getElementById('sortByFilter');
+        const sortOrderFilter = document.getElementById('sortOrderFilter');
 
         if (searchInput) searchInput.value = '';
         if (severityFilter) severityFilter.value = '';
+        if (iosVersionFilter) iosVersionFilter.value = '';
+        if (sortByFilter) sortByFilter.value = 'discovered_date';
+        if (sortOrderFilter) sortOrderFilter.value = 'desc';
 
-        this.currentFilters = { search: '', severity: '' };
+        this.currentFilters = {
+            search: '',
+            severity: '',
+            ios_version: '',
+            sort_by: 'discovered_date',
+            sort_order: 'desc'
+        };
         this.currentPage = 0;
 
         this.loadVulnerabilities();
