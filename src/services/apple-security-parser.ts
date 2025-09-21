@@ -14,73 +14,48 @@ export class AppleSecurityParser {
       product?: string;
     }> = [];
 
-    // Apple security pages use <p class="gb-paragraph"> elements containing CVE information
-    // Parse HTML to find these elements (simplified approach without full DOM parser)
-    const gbParagraphPattern = /<p[^>]*class="[^"]*gb-paragraph[^"]*"[^>]*>(.*?)<\/p>/gi;
-    const cvePattern = /CVE-\d{4}-\d{4,7}/g;
+    console.log(`Parsing security content for ${version}...`);
 
-    let match;
-    const foundCves = new Set<string>();
+    // Apple security pages have a specific structure:
+    // <h3 class="gb-header">Product Name</h3>
+    // <p class="gb-paragraph">Available for: ...</p>
+    // <p class="gb-paragraph">Impact: ...</p>
+    // <p class="gb-paragraph">Description: ...</p>
+    // <p class="gb-paragraph">CVE-XXXX-XXXX: researcher</p>
 
-    // Find all gb-paragraph elements
-    while ((match = gbParagraphPattern.exec(html)) !== null) {
-      const paragraphContent = match[1];
+    // Find all vulnerability sections by looking for h3 headers followed by CVE patterns
+    const sectionPattern = /<h3[^>]*class="[^"]*gb-header[^"]*"[^>]*>([^<]+)<\/h3>([\s\S]*?)(?=<h3[^>]*class="[^"]*gb-header[^"]*"|$)/gi;
 
-      // Look for CVE IDs in this paragraph
-      const cveMatches = paragraphContent.match(cvePattern);
+    let sectionMatch;
+    while ((sectionMatch = sectionPattern.exec(html)) !== null) {
+      const productName = sectionMatch[1].trim();
+      const sectionContent = sectionMatch[2];
+
+      console.log(`Found product section: ${productName}`);
+
+      // Look for CVE IDs in this section
+      const cvePattern = /CVE-\d{4}-\d{4,7}/g;
+      const cveMatches = sectionContent.match(cvePattern);
+
       if (cveMatches) {
+        console.log(`Found ${cveMatches.length} CVEs in ${productName} section`);
+
+        // Extract section information
+        const availableFor = this.extractFieldFromSection(sectionContent, 'Available for');
+        const impact = this.extractFieldFromSection(sectionContent, 'Impact');
+        const description = this.extractFieldFromSection(sectionContent, 'Description');
+
+        // Create vulnerability entries for each CVE in this section
         for (const cveId of cveMatches) {
-          if (!foundCves.has(cveId)) {
-            foundCves.add(cveId);
-
-            // Extract description from the paragraph content
-            const description = this.extractDescriptionFromParagraph(paragraphContent, cveId);
-            if (description) {
-              // Extract Apple-specific context for this CVE
-              const appleContext = this.extractAppleContext(html, cveId);
-
-              vulnerabilities.push({
-                cveId,
-                description: this.cleanDescription(description),
-                appleDescription: appleContext.description,
-                availableFor: appleContext.availableFor,
-                impact: appleContext.impact,
-                product: appleContext.product,
-              });
-              console.log(`Found CVE ${cveId}: ${description.substring(0, 100)}...`);
-            }
-          }
-        }
-      }
-    }
-
-    // Fallback: also check for CVEs in any paragraph elements if gb-paragraph didn't work
-    if (vulnerabilities.length === 0) {
-      const anyParagraphPattern = /<p[^>]*>(.*?)<\/p>/gi;
-      while ((match = anyParagraphPattern.exec(html)) !== null) {
-        const paragraphContent = match[1];
-        const cveMatches = paragraphContent.match(cvePattern);
-        if (cveMatches) {
-          for (const cveId of cveMatches) {
-            if (!foundCves.has(cveId)) {
-              foundCves.add(cveId);
-              const description = this.extractDescriptionFromParagraph(paragraphContent, cveId);
-              if (description) {
-                // Extract Apple-specific context for this CVE
-                const appleContext = this.extractAppleContext(html, cveId);
-
-                vulnerabilities.push({
-                  cveId,
-                  description: this.cleanDescription(description),
-                  appleDescription: appleContext.description,
-                  availableFor: appleContext.availableFor,
-                  impact: appleContext.impact,
-                  product: appleContext.product,
-                });
-                console.log(`Found CVE ${cveId} (fallback): ${description.substring(0, 100)}...`);
-              }
-            }
-          }
+          vulnerabilities.push({
+            cveId: cveId.trim(),
+            description: description || `Security vulnerability in ${productName}`,
+            appleDescription: description,
+            availableFor: availableFor,
+            impact: impact,
+            product: productName,
+          });
+          console.log(`Added CVE ${cveId} for ${productName}`);
         }
       }
     }
@@ -237,6 +212,18 @@ export class AppleSecurityParser {
     }
 
     return context;
+  }
+
+  private static extractFieldFromSection(sectionContent: string, fieldName: string): string | undefined {
+    // Look for paragraphs that start with the field name
+    const fieldPattern = new RegExp(`<p[^>]*class="[^"]*gb-paragraph[^"]*"[^>]*>\\s*${fieldName}:\\s*([^<]+)</p>`, 'i');
+    const match = sectionContent.match(fieldPattern);
+
+    if (match && match[1]) {
+      return this.stripHtmlTags(match[1]).trim();
+    }
+
+    return undefined;
   }
 
   private static isLikelyAppleProduct(element: any, elements: any[], currentIndex: number): boolean {
