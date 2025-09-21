@@ -1,14 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch",
-      "Bash(npx wrangler d1 execute:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(curl *)",
-      "Bash(npm run deploy:*)",
-      "WebFetch(domain:support.apple.com)",
-      "Bash(npx wrangler pages deploy:*)"
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

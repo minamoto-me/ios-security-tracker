@@ -204,7 +204,7 @@ export class VulnerabilityRepository {
     versions.forEach(versionString => {
       // Split by comma and extract version numbers
       const parts = versionString.split(',');
-      parts.forEach(part => {
+      parts.forEach((part: string) => {
         const match = part.trim().match(/(\d+(?:\.\d+)*)/);
         if (match) {
           allVersions.add(match[1]);

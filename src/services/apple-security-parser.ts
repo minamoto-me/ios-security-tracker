@@ -11,6 +11,7 @@ export class AppleSecurityParser {
       appleDescription?: string;
       availableFor?: string;
       impact?: string;
+      product?: string;
     }> = [];
 
     // Apple security pages use <p class="gb-paragraph"> elements containing CVE information
@@ -101,67 +102,185 @@ export class AppleSecurityParser {
     impact?: string;
     product?: string;
   } {
-    const context = { description: undefined, availableFor: undefined, impact: undefined, product: undefined };
+    const context: {
+      description?: string;
+      availableFor?: string;
+      impact?: string;
+      product?: string;
+    } = {};
 
     // Find the CVE in the HTML
     const cveIndex = html.toLowerCase().indexOf(cveId.toLowerCase());
     if (cveIndex === -1) return context;
 
     // Extract a larger section around the CVE to look for Apple's structured information
-    const searchRadius = 2000; // Look 2000 characters before and after
+    const searchRadius = 3000; // Increased search radius
     const startIndex = Math.max(0, cveIndex - searchRadius);
     const endIndex = Math.min(html.length, cveIndex + searchRadius);
     const sectionHtml = html.substring(startIndex, endIndex);
 
-    // Extract all elements (headers and paragraphs) in this section
-    const allElementsPattern = /<(h[1-6]|p)[^>]*(?:class="[^"]*gb-(?:header|paragraph)[^"]*"[^>]*)?>([^<]*(?:<[^>]*>[^<]*)*?)<\/\1>/gi;
-    let match;
-    const elements: { type: string; content: string }[] = [];
+    // More flexible pattern to capture various HTML structures
+    // Look for any headers and paragraphs, not just specific classes
+    const headerPattern = /<(h[1-6])[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)<\/\1>/gi;
+    const paragraphPattern = /<p[^>]*>([^<]*(?:<[^>]*>[^<]*)*?)<\/p>/gi;
 
-    while ((match = allElementsPattern.exec(sectionHtml)) !== null) {
+    const elements: { type: string; content: string; originalHtml: string }[] = [];
+
+    // Extract headers
+    let match;
+    while ((match = headerPattern.exec(sectionHtml)) !== null) {
       const elementType = match[1];
-      const elementContent = match[2].replace(/<[^>]*>/g, ' ').replace(/&[^;]+;/g, ' ').trim();
-      if (elementContent) {
-        elements.push({ type: elementType, content: elementContent });
+      const elementContent = this.stripHtmlTags(match[2]).trim();
+      if (elementContent && elementContent.length > 0) {
+        elements.push({ type: elementType, content: elementContent, originalHtml: match[0] });
       }
     }
 
-    // Look for Apple product as a header before "Available for"
+    // Extract paragraphs
+    while ((match = paragraphPattern.exec(sectionHtml)) !== null) {
+      const elementContent = this.stripHtmlTags(match[1]).trim();
+      if (elementContent && elementContent.length > 0) {
+        elements.push({ type: 'p', content: elementContent, originalHtml: match[0] });
+      }
+    }
+
+    // Sort elements by their position in the HTML
+    elements.sort((a, b) => {
+      const aIndex = sectionHtml.indexOf(a.originalHtml);
+      const bIndex = sectionHtml.indexOf(b.originalHtml);
+      return aIndex - bIndex;
+    });
+
+    // Enhanced Apple context extraction with more flexible patterns
     for (let i = 0; i < elements.length; i++) {
       const element = elements[i];
 
-      // Check if this is a header that could be an Apple product
-      if (element.type.match(/^h[1-6]$/i) && element.content && element.content.length > 0) {
-        // Look ahead to see if the next elements contain "Available for", "Impact", or "Description"
-        const nextElements = elements.slice(i + 1, i + 4); // Check next 3 elements
-        const hasAppleContext = nextElements.some(el =>
-          el.content.match(/^(Available for|Impact|Description):/i)
-        );
+      // Look for Apple products in headers
+      if (element.type.match(/^h[1-6]$/i) && element.content.length > 0 && element.content.length < 100) {
+        // Apple product patterns - look for common Apple component names
+        const appleProductPatterns = [
+          /^(Apple.*)/i,
+          /^(Core.*)/i,
+          /^(Foundation|Security|WebKit|Safari|Mail|Messages|FaceTime|Camera|Photos|Music)/i,
+          /^(Audio|Video|Graphics|Network|Bluetooth|Wi-Fi)/i,
+          /^(Kernel|System|Framework|Engine|Library)/i,
+          /^(Face ID|Touch ID|Secure Enclave|Neural Engine)/i
+        ];
 
-        if (hasAppleContext && !context.product) {
-          // This header is likely the Apple product
-          context.product = element.content.trim();
+        const isAppleProduct = appleProductPatterns.some(pattern => pattern.test(element.content));
+
+        if (isAppleProduct || this.isLikelyAppleProduct(element, elements, i)) {
+          if (!context.product) {
+            context.product = element.content.trim();
+          }
         }
       }
 
-      // Process paragraphs for Apple-specific patterns
+      // Enhanced pattern matching for Apple security fields
       if (element.type === 'p') {
-        // Available for pattern
-        if (element.content.match(/^Available for:/i)) {
-          context.availableFor = element.content.replace(/^Available for:\s*/i, '').trim();
-        }
-        // Impact pattern
-        else if (element.content.match(/^Impact:/i)) {
-          context.impact = element.content.replace(/^Impact:\s*/i, '').trim();
-        }
-        // Description pattern (Apple's fix description)
-        else if (element.content.match(/^Description:/i)) {
-          context.description = element.content.replace(/^Description:\s*/i, '').trim();
+        const content = element.content;
+
+        // More flexible patterns for Apple's security information
+        const patterns = [
+          // Available for patterns
+          { key: 'availableFor', patterns: [
+            /^Available\s+for[:\s]+(.*)/i,
+            /^Affects[:\s]+(.*)/i,
+            /^Fixed\s+in[:\s]+(.*)/i
+          ]},
+
+          // Impact patterns
+          { key: 'impact', patterns: [
+            /^Impact[:\s]+(.*)/i,
+            /^Security\s+Impact[:\s]+(.*)/i,
+            /^Vulnerability[:\s]+(.*)/i
+          ]},
+
+          // Description patterns
+          { key: 'description', patterns: [
+            /^Description[:\s]+(.*)/i,
+            /^Fix[:\s]+(.*)/i,
+            /^Solution[:\s]+(.*)/i,
+            /^Resolution[:\s]+(.*)/i
+          ]}
+        ];
+
+        for (const patternGroup of patterns) {
+          if (!context[patternGroup.key as keyof typeof context]) {
+            for (const pattern of patternGroup.patterns) {
+              const match = content.match(pattern);
+              if (match && match[1] && match[1].trim().length > 5) {
+                (context as any)[patternGroup.key] = match[1].trim();
+                break;
+              }
+            }
+          }
         }
       }
     }
 
+    // Additional fallback: look for Apple context using text-based patterns in the entire section
+    if (!context.availableFor || !context.impact || !context.description) {
+      this.extractAppleContextFallback(sectionHtml, context);
+    }
+
+    // Debug logging to understand what we're extracting
+    if (context.product || context.availableFor || context.impact || context.description) {
+      console.log(`Apple context for ${cveId}:`, {
+        product: context.product,
+        availableFor: context.availableFor,
+        impact: context.impact,
+        description: context.description
+      });
+    } else {
+      console.log(`No Apple context found for ${cveId}`);
+    }
+
     return context;
+  }
+
+  private static isLikelyAppleProduct(element: any, elements: any[], currentIndex: number): boolean {
+    // Look ahead to see if the next elements contain Apple security patterns
+    const nextElements = elements.slice(currentIndex + 1, currentIndex + 6); // Check next 5 elements
+
+    const hasAppleSecurityContext = nextElements.some(el => {
+      const content = el.content.toLowerCase();
+      return content.includes('available for') ||
+             content.includes('impact:') ||
+             content.includes('description:') ||
+             content.includes('vulnerability') ||
+             content.includes('security');
+    });
+
+    // Check if the element looks like a component name (not too long, no common words)
+    const content = element.content.toLowerCase();
+    const isNotCommonText = !content.includes('the ') &&
+                           !content.includes('this ') &&
+                           !content.includes('vulnerability') &&
+                           element.content.length < 50;
+
+    return hasAppleSecurityContext && isNotCommonText;
+  }
+
+  private static extractAppleContextFallback(html: string, context: any): void {
+    // Use more aggressive text-based extraction as fallback
+    const cleanHtml = this.stripHtmlTags(html);
+
+    // Look for patterns in the cleaned text
+    const fallbackPatterns = [
+      { key: 'availableFor', pattern: /Available\s+for[:\s]+([^\n\r.!?]*)/i },
+      { key: 'impact', pattern: /Impact[:\s]+([^\n\r.!?]*)/i },
+      { key: 'description', pattern: /Description[:\s]+([^\n\r.!?]*)/i }
+    ];
+
+    for (const { key, pattern } of fallbackPatterns) {
+      if (!context[key]) {
+        const match = cleanHtml.match(pattern);
+        if (match && match[1] && match[1].trim().length > 5) {
+          context[key] = match[1].trim();
+        }
+      }
+    }
   }
 
   private static extractCVEDescription(html: string, cveId: string): string | null {

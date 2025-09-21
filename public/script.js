@@ -397,8 +397,24 @@ class VulnerabilityTracker {
     }
 
     generateAppleContextSection(vuln) {
-        // Only show Apple context if we have any Apple-specific information
-        const hasAppleContext = vuln.apple_description || vuln.apple_available_for || vuln.apple_impact || vuln.apple_product;
+        // Check for Apple context with better null/undefined handling
+        const product = vuln.apple_product?.trim();
+        const impact = vuln.apple_impact?.trim();
+        const description = vuln.apple_description?.trim();
+        const availableFor = vuln.apple_available_for?.trim();
+
+        const hasAppleContext = product || impact || description || availableFor;
+
+        // Debug logging to understand what Apple context we're receiving
+        if (vuln.cve_id) {
+            console.log(`Apple context for ${vuln.cve_id}:`, {
+                product,
+                impact,
+                description,
+                availableFor,
+                hasContext: hasAppleContext
+            });
+        }
 
         if (!hasAppleContext) {
             return '';
@@ -408,35 +424,41 @@ class VulnerabilityTracker {
             <div class="apple-context-section mb-2">
                 <h3><i class="fab fa-apple"></i> Apple Security Information</h3>
 
-                ${vuln.apple_product ? `
+                ${product ? `
                     <div class="apple-detail-item mb-1">
                         <strong>Apple Product:</strong>
-                        <p class="apple-product">${vuln.apple_product}</p>
+                        <p class="apple-product">${this.escapeHtml(product)}</p>
                     </div>
                 ` : ''}
 
-                ${vuln.apple_impact ? `
+                ${impact ? `
                     <div class="apple-detail-item mb-1">
                         <strong>Impact:</strong>
-                        <p class="apple-impact">${vuln.apple_impact}</p>
+                        <p class="apple-impact">${this.escapeHtml(impact)}</p>
                     </div>
                 ` : ''}
 
-                ${vuln.apple_description ? `
+                ${description ? `
                     <div class="apple-detail-item mb-1">
                         <strong>How Apple Fixed It:</strong>
-                        <p class="apple-description">${vuln.apple_description}</p>
+                        <p class="apple-description">${this.escapeHtml(description)}</p>
                     </div>
                 ` : ''}
 
-                ${vuln.apple_available_for ? `
+                ${availableFor ? `
                     <div class="apple-detail-item mb-1">
                         <strong>Available For:</strong>
-                        <p class="apple-available-for">${vuln.apple_available_for}</p>
+                        <p class="apple-available-for">${this.escapeHtml(availableFor)}</p>
                     </div>
                 ` : ''}
             </div>
         `;
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     closeModal() {

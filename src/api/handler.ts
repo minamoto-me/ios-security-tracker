@@ -1,4 +1,4 @@
-import { Env } from '../types';
+import { Env, Vulnerability } from '../types';
 import { VulnerabilityRepository } from '../database/repository';
 
 export class ApiHandler {
@@ -292,7 +292,7 @@ export class ApiHandler {
       console.log('Populating sample vulnerability data...');
 
       // Sample vulnerabilities based on real iOS CVEs
-      const sampleVulnerabilities = [
+      const sampleVulnerabilities: Omit<Vulnerability, 'created_at'>[] = [
         {
           id: 'CVE-2024-44308',
           cve_id: 'CVE-2024-44308',
@@ -590,7 +590,7 @@ export class ApiHandler {
             id: vuln.cveId,
             cve_id: vuln.cveId,
             description: vuln.description,
-            severity: cvssData?.severity || 'UNKNOWN',
+            severity: cvssData?.severity || 'MEDIUM',
             cvss_score: cvssData?.score || null,
             cvss_vector: cvssData?.vector || null,
             ios_versions_affected: parsedData.version,
@@ -907,7 +907,7 @@ export class ApiHandler {
             id: vuln.cveId,
             cve_id: vuln.cveId,
             description: vuln.description,
-            severity: cvssData?.severity || 'UNKNOWN',
+            severity: cvssData?.severity || 'MEDIUM',
             cvss_score: cvssData?.score || null,
             cvss_vector: cvssData?.vector || null,
             ios_versions_affected: parsedData.version,
