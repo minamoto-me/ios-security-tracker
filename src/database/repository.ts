@@ -77,8 +77,15 @@ export class VulnerabilityRepository {
     }
 
     if (iosVersion) {
-      query += ' AND ios_versions_affected LIKE ?';
-      params.push(`%${iosVersion}%`);
+      // Use more precise iOS version matching to avoid "18.6" matching "18.6.2"
+      // Match the version as a standalone version (surrounded by word boundaries, spaces, or commas)
+      query += ' AND (ios_versions_affected LIKE ? OR ios_versions_affected LIKE ? OR ios_versions_affected LIKE ? OR ios_versions_affected = ?)';
+      params.push(
+        `${iosVersion},%`,     // version at start followed by comma
+        `%, ${iosVersion},%`,  // version in middle with spaces
+        `%, ${iosVersion}`,    // version at end with space
+        iosVersion             // exact match
+      );
     }
 
     // Add sorting
@@ -124,8 +131,15 @@ export class VulnerabilityRepository {
     }
 
     if (iosVersion) {
-      query += ' AND ios_versions_affected LIKE ?';
-      params.push(`%${iosVersion}%`);
+      // Use more precise iOS version matching to avoid "18.6" matching "18.6.2"
+      // Match the version as a standalone version (surrounded by word boundaries, spaces, or commas)
+      query += ' AND (ios_versions_affected LIKE ? OR ios_versions_affected LIKE ? OR ios_versions_affected LIKE ? OR ios_versions_affected = ?)';
+      params.push(
+        `${iosVersion},%`,     // version at start followed by comma
+        `%, ${iosVersion},%`,  // version in middle with spaces
+        `%, ${iosVersion}`,    // version at end with space
+        iosVersion             // exact match
+      );
     }
 
     const result = await this.db.prepare(query).bind(...params).first();

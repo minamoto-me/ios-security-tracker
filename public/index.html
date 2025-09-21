@@ -38,28 +38,37 @@
                             <i class="fas fa-search"></i> Search
                         </button>
                     </div>
-                    <div class="filter-group">
-                        <select id="severityFilter">
-                            <option value="">All Severities</option>
-                            <option value="CRITICAL">Critical</option>
-                            <option value="HIGH">High</option>
-                            <option value="MEDIUM">Medium</option>
-                            <option value="LOW">Low</option>
-                        </select>
-                        <select id="iosVersionFilter">
-                            <option value="">All iOS Versions</option>
-                            <!-- Options populated dynamically by JavaScript -->
-                        </select>
-                        <select id="sortByFilter">
-                            <option value="discovered_date">Sort by Date</option>
-                            <option value="cvss_score">Sort by CVSS Score</option>
-                            <option value="severity">Sort by Severity</option>
-                            <option value="cve_id">Sort by CVE ID</option>
-                        </select>
-                        <select id="sortOrderFilter">
-                            <option value="desc">Newest First</option>
-                            <option value="asc">Oldest First</option>
-                        </select>
+
+                    <div class="controls-section">
+                        <div class="filter-group">
+                            <label class="control-section-label">Filters:</label>
+                            <select id="severityFilter">
+                                <option value="">All Severities</option>
+                                <option value="CRITICAL">Critical</option>
+                                <option value="HIGH">High</option>
+                                <option value="MEDIUM">Medium</option>
+                                <option value="LOW">Low</option>
+                            </select>
+                            <select id="iosVersionFilter">
+                                <option value="">All iOS Versions</option>
+                                <!-- Options populated dynamically by JavaScript -->
+                            </select>
+                        </div>
+
+                        <div class="sort-group">
+                            <label class="control-section-label">Sort:</label>
+                            <select id="sortByFilter">
+                                <option value="discovered_date">Date</option>
+                                <option value="cvss_score">CVSS Score</option>
+                                <option value="severity">Severity</option>
+                                <option value="cve_id">CVE ID</option>
+                            </select>
+                            <select id="sortOrderFilter">
+                                <option value="desc">Newest First</option>
+                                <option value="asc">Oldest First</option>
+                            </select>
+                        </div>
+
                         <button id="clearFilters" class="btn-secondary">
                             <i class="fas fa-times"></i> Clear
                         </button>

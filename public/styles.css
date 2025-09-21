@@ -182,10 +182,26 @@ h3 {
 /* Search Controls */
 .search-controls {
     display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    align-items: center;
+    flex-direction: column;
+    gap: 1.5rem;
     margin-bottom: 2rem;
+}
+
+.controls-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.control-section-label {
+    font-weight: 600;
+    color: #475569;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 0.5rem;
 }
 
 .search-input-group {
@@ -208,9 +224,24 @@ h3 {
     border-color: #3498db;
 }
 
-.filter-group {
+.filter-group, .sort-group {
     display: flex;
-    gap: 0.5rem;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.filter-group {
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border-color: #bae6fd;
+}
+
+.sort-group {
+    background: linear-gradient(135deg, #fdf4ff 0%, #fae8ff 100%);
+    border-color: #e9d5ff;
 }
 
 select {
@@ -635,17 +666,30 @@ select:focus {
     }
 
     .search-controls {
+        gap: 1rem;
+    }
+
+    .controls-section {
         flex-direction: column;
         gap: 1rem;
+        align-items: stretch;
     }
 
     .search-input-group {
         flex-direction: column;
+        gap: 0.5rem;
     }
 
-    .filter-group {
+    .filter-group, .sort-group {
         flex-direction: column;
+        align-items: stretch;
         gap: 0.75rem;
+    }
+
+    .control-section-label {
+        text-align: center;
+        margin-right: 0;
+        margin-bottom: 0.25rem;
     }
 
     .vulnerability-card {

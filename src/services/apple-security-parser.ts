@@ -50,7 +50,7 @@ export class AppleSecurityParser {
           vulnerabilities.push({
             cveId: cveId.trim(),
             description: description || `Security vulnerability in ${productName}`,
-            appleDescription: description,
+            appleDescription: undefined, // Don't duplicate - use description field
             availableFor: availableFor,
             impact: impact,
             product: productName,

@@ -438,12 +438,6 @@ class VulnerabilityTracker {
                     </div>
                 ` : ''}
 
-                ${description ? `
-                    <div class="apple-detail-item mb-1">
-                        <strong>How Apple Fixed It:</strong>
-                        <p class="apple-description">${this.escapeHtml(description)}</p>
-                    </div>
-                ` : ''}
 
                 ${availableFor ? `
                     <div class="apple-detail-item mb-1">
