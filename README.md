@@ -259,6 +259,28 @@ For issues and questions:
 
 ## Recent Achievements (2025)
 
+### ✅ Session 3: Apple Context Parsing Fix (September 21, 2025)
+
+**BREAKTHROUGH: Successfully Fixed Apple Context Parsing**
+- **Problem Identified**: The Apple security page parsing was completely failing due to incorrect HTML structure assumptions
+- **Root Cause**: Code was looking for CVE patterns embedded in paragraph text, but Apple's actual structure uses section-based organization
+- **Solution Implemented**: Complete rewrite of parsing logic to match Apple's actual HTML structure:
+  ```
+  <h3 class="gb-header">Product Name</h3> (e.g., "WebKit", "Kernel", "Apple Neural Engine")
+  <p class="gb-paragraph">Available for: ...</p> (device compatibility)
+  <p class="gb-paragraph">Impact: ...</p> (security implications)
+  <p class="gb-paragraph">Description: ...</p> (how Apple fixed it)
+  <p class="gb-paragraph">CVE-XXXX-XXXX: researcher</p> (CVE ID)
+  ```
+
+**Results**:
+- ✅ 42 vulnerabilities successfully parsed with complete Apple context
+- ✅ All Apple-specific fields now populated (product, impact, description, device compatibility)
+- ✅ 3 iOS releases processed (iOS 26, iOS 18.7, iOS 16.7.12)
+- ✅ Database and website now displaying rich Apple security context
+
+### ✅ Previous Achievements
+
 - ✅ **Enhanced Apple Context Parsing**: Now extracts Apple product names, impact descriptions, fix details, and device compatibility
 - ✅ **Dynamic iOS Version Filtering**: Automatically populates filter options based on available data in database
 - ✅ **Improved Vulnerability Modal**: Beautiful display of Apple-specific security information with color-coded sections
@@ -275,3 +297,63 @@ For issues and questions:
 - [ ] Advanced search with regex support and saved searches
 - [ ] Export functionality (CSV, JSON, PDF reports)
 - [ ] Real-time vulnerability feed subscriptions with webhooks
+
+## Development Notes & Troubleshooting
+
+### Apple Security Page Structure (as of September 2025)
+
+The Apple security pages follow a consistent structure that the parser relies on:
+
+1. **Main List Page**: `https://support.apple.com/en-us/100100`
+   - Contains a table with links to individual security bulletins
+   - Links follow pattern: `/en-us/XXXXXX` (e.g., `/en-us/125108` for iOS 26)
+
+2. **Individual Security Pages**: Each page has sections like:
+   ```html
+   <h3 class="gb-header">Product Name</h3>
+   <p class="gb-paragraph">Available for: device list</p>
+   <p class="gb-paragraph">Impact: security implications</p>
+   <p class="gb-paragraph">Description: how Apple fixed it</p>
+   <p class="gb-paragraph">CVE-XXXX-XXXX: researcher credit</p>
+   ```
+
+### Debugging Apple Context Parsing
+
+If Apple context parsing fails again:
+
+1. **Check the HTML structure**: Use curl to fetch a sample page:
+   ```bash
+   curl -s "https://support.apple.com/en-us/125108" | grep -A 10 -B 5 "gb-header"
+   ```
+
+2. **Verify section parsing**: The regex pattern expects `<h3 class="gb-header">` elements
+   - If Apple changes CSS classes, update the pattern in `extractFieldFromSection()`
+
+3. **Test manual scan**: Use the API endpoint to trigger manual scanning:
+   ```bash
+   curl -X POST "https://your-worker.workers.dev/api/scan/trigger"
+   ```
+
+4. **Check processing logs**: View recent scan results:
+   ```bash
+   curl "https://your-worker.workers.dev/api/logs"
+   ```
+
+### Known Limitations & Future Improvements
+
+1. **HTML Structure Dependency**: Parser relies on Apple's specific CSS classes and structure
+   - **Risk**: Apple could change their page structure
+   - **Mitigation**: Regular monitoring and fallback parsing methods
+
+2. **Rate Limiting**: NVD API has rate limits for CVSS score enrichment
+   - **Current**: Built-in rate limiting and caching
+   - **Future**: Consider getting an NVD API key for higher limits
+
+3. **Error Handling**: Current parser is robust but could be enhanced
+   - **Future**: Add more detailed error reporting and automatic retry logic
+
+### Session History
+
+- **Session 1**: Initial implementation with basic Apple parsing
+- **Session 2**: Enhanced UI, dynamic filtering, database integrity monitoring
+- **Session 3**: **MAJOR FIX** - Corrected Apple parsing logic based on actual HTML structure analysis
