@@ -4,7 +4,9 @@
       "Bash(npm run build:*)",
       "Bash(curl:*)",
       "Bash(npm run deploy:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npx wrangler pages deploy:*)"
     ],
     "deny": [],
     "ask": []

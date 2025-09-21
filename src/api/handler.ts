@@ -95,6 +95,10 @@ export class ApiHandler {
         return await this.processAllLatestCVEs(corsHeaders);
       }
 
+      if (method === 'POST' && path === '/admin/reparse') {
+        return await this.manualReparse(request, corsHeaders);
+      }
+
       // Not found
       return new Response(
         JSON.stringify({ error: 'Not found', path }),
@@ -975,6 +979,368 @@ export class ApiHandler {
       breakdown[severity] = (breakdown[severity] || 0) + 1;
     });
     return breakdown;
+  }
+
+  private async manualReparse(request: Request, headers: Record<string, string>): Promise<Response> {
+    try {
+      // Simple authentication check
+      const adminKey = request.headers.get('X-Admin-Key');
+      if (adminKey !== 'manual-reparse-2024') {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers }
+        );
+      }
+
+      const body = await request.json() as { versions: string[], forceUpdate?: boolean };
+      const { versions, forceUpdate = true } = body;
+
+      if (!versions || !Array.isArray(versions) || versions.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid versions array' }),
+          { status: 400, headers }
+        );
+      }
+
+      console.log(`Manual reparse requested for versions: ${versions.join(', ')}`);
+
+      // Import required services
+      const { AppleSecurityParser } = await import('../services/apple-security-parser');
+      const { NVDClient } = await import('../services/nvd-client');
+
+      const nvdClient = new NVDClient(this.env);
+      const results = [];
+
+      for (const version of versions) {
+        try {
+          console.log(`\n=== Reparsing iOS ${version} ===`);
+
+          // Find Apple security URL for this version
+          const securityUrl = await this.findAppleSecurityUrl(version);
+          if (!securityUrl) {
+            console.error(`Could not find Apple security URL for iOS ${version}`);
+            results.push({
+              version,
+              success: false,
+              error: 'Could not find Apple security URL'
+            });
+            continue;
+          }
+
+          console.log(`Found security URL: ${securityUrl}`);
+
+          // Fetch and parse Apple security content
+          const response = await fetch(securityUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to fetch ${securityUrl}: ${response.status}`);
+          }
+
+          const html = await response.text();
+          const securityRelease = AppleSecurityParser.parseSecurityContent(html, version);
+
+          if (!securityRelease || securityRelease.vulnerabilities.length === 0) {
+            console.error(`No vulnerabilities found for iOS ${version}`);
+            results.push({
+              version,
+              success: false,
+              error: 'No vulnerabilities found'
+            });
+            continue;
+          }
+
+          console.log(`Found ${securityRelease.vulnerabilities.length} vulnerabilities for iOS ${version}`);
+
+          // Check/insert iOS release record
+          let releaseId: number;
+          const existingRelease = await this.repository.getIOSReleaseByVersion(version);
+
+          if (existingRelease) {
+            releaseId = existingRelease.id!;
+            console.log(`Using existing iOS release record ID: ${releaseId}`);
+          } else {
+            releaseId = await this.repository.insertIOSRelease({
+              version: version,
+              release_date: securityRelease.releaseDate,
+              security_content_url: securityUrl,
+            });
+            console.log(`Created new iOS release record ID: ${releaseId}`);
+          }
+
+          // Process each vulnerability
+          let updated = 0;
+          let created = 0;
+          const processedCves = [];
+
+          for (const vuln of securityRelease.vulnerabilities) {
+            try {
+              const existingVuln = await this.repository.getVulnerabilityByCveId(vuln.cveId);
+
+              let cvssData = null;
+              let description = vuln.description;
+
+              // Only fetch NVD data for new vulnerabilities or if forcing update
+              if (!existingVuln || forceUpdate) {
+                try {
+                  cvssData = await nvdClient.getCVSSData(vuln.cveId);
+                  const nvdDescription = await nvdClient.getCVEDescription(vuln.cveId);
+                  description = nvdDescription || vuln.description;
+
+                  // Rate limiting for NVD API
+                  await new Promise(resolve => setTimeout(resolve, 100));
+
+                } catch (nvdError) {
+                  console.warn(`NVD lookup failed for ${vuln.cveId}:`, nvdError);
+                  if (existingVuln) {
+                    cvssData = {
+                      score: existingVuln.cvss_score,
+                      vector: existingVuln.cvss_vector,
+                      severity: existingVuln.severity
+                    };
+                    description = existingVuln.description;
+                  }
+                }
+              } else {
+                // Use existing data
+                cvssData = {
+                  score: existingVuln.cvss_score,
+                  vector: existingVuln.cvss_vector,
+                  severity: existingVuln.severity
+                };
+                description = existingVuln.description;
+              }
+
+              const inferredSeverity = this.inferSeverityFromDescription(description);
+              const vulnerability = {
+                id: vuln.cveId,
+                cve_id: vuln.cveId,
+                description: description || 'Security vulnerability addressed in this update.',
+                severity: cvssData?.severity || inferredSeverity || 'MEDIUM',
+                cvss_score: (cvssData?.score !== undefined) ? cvssData.score : null,
+                cvss_vector: cvssData?.vector || null,
+                ios_versions_affected: version,
+                discovered_date: securityRelease.releaseDate || new Date().toISOString().split('T')[0],
+                apple_description: vuln.appleDescription,
+                apple_available_for: vuln.availableFor,
+                apple_impact: vuln.impact,
+                apple_product: vuln.product,
+              };
+
+              await this.repository.insertVulnerability(vulnerability);
+              await this.repository.linkVulnerabilityToRelease(vuln.cveId, releaseId);
+
+              processedCves.push({
+                cve_id: vuln.cveId,
+                severity: vulnerability.severity,
+                cvss_score: vulnerability.cvss_score,
+                apple_product: vuln.product,
+                apple_impact: vuln.impact
+              });
+
+              if (existingVuln) {
+                updated++;
+                console.log(`✓ Updated ${vuln.cveId} with Apple context`);
+              } else {
+                created++;
+                console.log(`✓ Created ${vuln.cveId}`);
+              }
+
+            } catch (error) {
+              console.error(`Failed to process ${vuln.cveId}:`, error);
+            }
+          }
+
+          console.log(`iOS ${version} complete: ${created} created, ${updated} updated`);
+
+          results.push({
+            version,
+            success: true,
+            created,
+            updated,
+            total_vulnerabilities: securityRelease.vulnerabilities.length,
+            sample_cves: processedCves.slice(0, 5)
+          });
+
+          // Rate limiting: wait 2 seconds between versions
+          if (versions.indexOf(version) < versions.length - 1) {
+            console.log('Waiting 2 seconds before next version...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+
+        } catch (error) {
+          console.error(`Failed to reparse iOS ${version}:`, error);
+          results.push({
+            version,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+
+      const response = {
+        message: 'Manual reparse completed',
+        requested_versions: versions,
+        force_update: forceUpdate,
+        results,
+        summary: {
+          total_versions: versions.length,
+          successful: results.filter(r => r.success).length,
+          failed: results.filter(r => !r.success).length,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response, null, 2), { headers });
+
+    } catch (error) {
+      console.error('Manual reparse failed:', error);
+
+      const response = {
+        message: 'Manual reparse failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private async findAppleSecurityUrl(version: string): Promise<string | null> {
+    try {
+      // First check if we have this version in our database
+      const existingRelease = await this.repository.getIOSReleaseByVersion(version);
+      if (existingRelease && existingRelease.security_content_url) {
+        console.log(`Found cached URL for iOS ${version}: ${existingRelease.security_content_url}`);
+        return existingRelease.security_content_url;
+      }
+
+      // Fetch Apple's main security releases page to discover URLs dynamically
+      const response = await fetch(`${this.env.APPLE_SECURITY_BASE_URL}/en-us/100100`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Apple security releases: ${response.status}`);
+      }
+
+      const html = await response.text();
+
+      // Look for exact version matches in iOS security release links
+      // Pattern: <a href="/en-us/######">iOS X.Y.Z and iPadOS X.Y.Z</a>
+      const exactVersionPattern = new RegExp(
+        `<a[^>]+href="([^"]*\\/en-us\\/\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}(?:\\s+and\\s+iPadOS\\s+${this.escapeRegex(version)})?[^<]*)`,
+        'gi'
+      );
+
+      let match = exactVersionPattern.exec(html);
+      if (match) {
+        const relativeUrl = match[1];
+        const url = relativeUrl.startsWith('http') ? relativeUrl : `${this.env.APPLE_SECURITY_BASE_URL}${relativeUrl}`;
+        console.log(`Found exact match for iOS ${version}: ${match[2]} -> ${url}`);
+
+        // Cache this URL in database for future use
+        try {
+          await this.repository.insertIOSRelease({
+            version: version,
+            release_date: new Date().toISOString().split('T')[0], // Will be updated when parsed
+            security_content_url: url,
+          });
+        } catch (error) {
+          // Ignore duplicate insertion errors
+          console.log(`iOS release ${version} already exists in database`);
+        }
+
+        return url;
+      }
+
+      // If exact match not found, try broader patterns (but be more careful)
+      const broaderPatterns = [
+        // Look for iOS version followed by word boundary (to avoid partial matches)
+        new RegExp(`<a[^>]+href="([^"]*\\/en-us\\/\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}\\b[^<]*)`, 'gi'),
+      ];
+
+      for (const pattern of broaderPatterns) {
+        pattern.lastIndex = 0; // Reset regex
+        const match = pattern.exec(html);
+        if (match) {
+          const relativeUrl = match[1];
+          const url = relativeUrl.startsWith('http') ? relativeUrl : `${this.env.APPLE_SECURITY_BASE_URL}${relativeUrl}`;
+
+          // Verify this is actually the right version by checking if the match text contains extra version info
+          const matchText = match[2].toLowerCase();
+          const versionParts = version.split('.');
+          const majorMinor = versionParts.slice(0, 2).join('.');
+
+          // Avoid matching if the text contains a longer version (e.g., avoid 18.1.1 when looking for 18.1)
+          if (versionParts.length === 2 && matchText.includes(`${version}.`)) {
+            console.log(`Skipping longer version match for iOS ${version}: ${match[2]}`);
+            continue;
+          }
+
+          console.log(`Found match for iOS ${version}: ${match[2]} -> ${url}`);
+
+          // Cache this URL in database
+          try {
+            await this.repository.insertIOSRelease({
+              version: version,
+              release_date: new Date().toISOString().split('T')[0],
+              security_content_url: url,
+            });
+          } catch (error) {
+            console.log(`iOS release ${version} already exists in database`);
+          }
+
+          return url;
+        }
+      }
+
+      console.log(`No Apple security URL found for iOS ${version}`);
+      return null;
+    } catch (error) {
+      console.error(`Error finding Apple security URL for iOS ${version}:`, error);
+      return null;
+    }
+  }
+
+  private escapeRegex(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private inferSeverityFromDescription(description: string): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+    const lowerDesc = description.toLowerCase();
+
+    if (lowerDesc.includes('remote code execution') ||
+        lowerDesc.includes('arbitrary code execution') ||
+        lowerDesc.includes('privilege escalation') ||
+        lowerDesc.includes('kernel')) {
+      return 'CRITICAL';
+    }
+
+    if (lowerDesc.includes('memory corruption') ||
+        lowerDesc.includes('buffer overflow') ||
+        lowerDesc.includes('use after free') ||
+        lowerDesc.includes('sandbox escape')) {
+      return 'HIGH';
+    }
+
+    if (lowerDesc.includes('information disclosure') ||
+        lowerDesc.includes('denial of service') ||
+        lowerDesc.includes('bypass')) {
+      return 'MEDIUM';
+    }
+
+    return 'MEDIUM';
   }
 
   private async getAvailableIOSVersions(headers: Record<string, string>): Promise<Response> {

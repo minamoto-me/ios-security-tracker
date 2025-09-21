@@ -41,3 +41,6 @@ coverage/
 # Database exports
 *.sql
 *.db
+
+# Claude Code settings
+.claude/settings.local.json

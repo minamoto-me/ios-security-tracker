@@ -1,29 +1,25 @@
 # iOS Security Vulnerability Tracker
 
-An automated system built with Cloudflare Workers that tracks iOS security vulnerabilities, enriches them with CVSS scores, and presents them on a public website.
+An automated system that tracks iOS security vulnerabilities with rich Apple context and CVSS scores, built on Cloudflare's edge platform.
 
-## Features
+🌐 **Live Demo**: [https://ios.minamoto.me](https://ios.minamoto.me)
 
-- 🔄 **Automated Weekly Scanning**: Scheduled cron job runs every Monday to scan for new iOS vulnerabilities
-- 🍎 **Enhanced Apple Security Integration**: Parses Apple's security release pages with full context extraction
-  - **Apple Product Information**: Extracts specific Apple products affected (e.g., "Apple Neural Engine", "CoreMedia", "Safari")
-  - **Impact Analysis**: Security implications for users from Apple's assessments
-  - **Fix Descriptions**: How Apple addressed each vulnerability
-  - **Device Compatibility**: Which devices and iOS versions are affected
-- 📊 **CVSS Enrichment**: Fetches CVSS scores and vectors from NVD API with intelligent rate limiting
-- 🗄️ **Robust Data Storage**: Uses Cloudflare D1 database with duplicate prevention and integrity checks
-- 🌐 **Dynamic Public API**: RESTful API with smart filtering, pagination, and real-time iOS version detection
-- 🎨 **Modern Responsive Web Interface**: Beautiful, mobile-optimized website with enhanced vulnerability modals
-- 📈 **Comprehensive Monitoring**: Real-time health checks, database integrity monitoring, and processing logs
-- ⚡ **High Performance**: Global CDN distribution via Cloudflare with optimized caching
+## Key Features
+
+- 🔄 **Automated Weekly Scanning**: Scheduled monitoring of Apple security releases
+- 🍎 **Rich Apple Context**: Extracts Apple product names, impact analysis, and device compatibility
+- 📊 **CVSS Enrichment**: Fetches severity scores from NVD with intelligent rate limiting
+- 🌐 **RESTful API**: Dynamic filtering, pagination, and real-time iOS version detection
+- 🎨 **Modern Web Interface**: Responsive design with enhanced vulnerability details
+- 📈 **Monitoring & Health Checks**: Real-time system status and processing logs
 
 ## Architecture
 
-- **Backend**: Cloudflare Workers (TypeScript)
-- **Database**: Cloudflare D1 (SQLite-compatible)
-- **Cache**: Cloudflare Workers KV
-- **Frontend**: Static HTML/CSS/JavaScript hosted on Cloudflare Pages
-- **Deployment**: Wrangler CLI
+Built entirely on **Cloudflare's Edge Platform**:
+- **Workers**: TypeScript backend with scheduled tasks
+- **D1 Database**: SQLite-compatible with schema migrations
+- **Pages**: Static frontend with global CDN
+- **KV Storage**: Caching and performance optimization
 
 ## Quick Start
 
@@ -257,103 +253,31 @@ For issues and questions:
 - Check recent alerts for system issues
 - Consult Cloudflare Workers documentation for platform-specific issues
 
-## Recent Achievements (2025)
+## Data Sources
 
-### ✅ Session 3: Apple Context Parsing Fix (September 21, 2025)
+- **Apple Security**: https://support.apple.com/en-us/100100
+- **NVD API**: https://services.nvd.nist.gov/rest/json/cves/2.0
+- **CVSS Database**: https://www.first.org/cvss/
 
-**BREAKTHROUGH: Successfully Fixed Apple Context Parsing**
-- **Problem Identified**: The Apple security page parsing was completely failing due to incorrect HTML structure assumptions
-- **Root Cause**: Code was looking for CVE patterns embedded in paragraph text, but Apple's actual structure uses section-based organization
-- **Solution Implemented**: Complete rewrite of parsing logic to match Apple's actual HTML structure:
-  ```
-  <h3 class="gb-header">Product Name</h3> (e.g., "WebKit", "Kernel", "Apple Neural Engine")
-  <p class="gb-paragraph">Available for: ...</p> (device compatibility)
-  <p class="gb-paragraph">Impact: ...</p> (security implications)
-  <p class="gb-paragraph">Description: ...</p> (how Apple fixed it)
-  <p class="gb-paragraph">CVE-XXXX-XXXX: researcher</p> (CVE ID)
-  ```
+## Documentation
 
-**Results**:
-- ✅ 42 vulnerabilities successfully parsed with complete Apple context
-- ✅ All Apple-specific fields now populated (product, impact, description, device compatibility)
-- ✅ 3 iOS releases processed (iOS 26, iOS 18.7, iOS 16.7.12)
-- ✅ Database and website now displaying rich Apple security context
+- [Development Sessions](docs/DEVELOPMENT_SESSIONS.md) - Detailed development history and major improvements
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and debugging steps
+- [API Documentation](#api-documentation) - RESTful API endpoints and usage
 
-### ✅ Previous Achievements
+## Recent Updates
 
-- ✅ **Enhanced Apple Context Parsing**: Now extracts Apple product names, impact descriptions, fix details, and device compatibility
-- ✅ **Dynamic iOS Version Filtering**: Automatically populates filter options based on available data in database
-- ✅ **Improved Vulnerability Modal**: Beautiful display of Apple-specific security information with color-coded sections
-- ✅ **Database Integrity Monitoring**: Real-time duplicate detection and data validation
-- ✅ **Responsive Design Overhaul**: Modern, mobile-first interface with enhanced readability
-- ✅ **Robust Error Handling**: Comprehensive undefined value protection and graceful degradation
+### Version 1.0 - Apple Context Integration ✅
+
+- **Enhanced Apple Context Parsing**: Now extracts rich context from Apple security pages
+- **Improved UI/UX**: Visual separation of filters and sorting, precise iOS version matching
+- **Manual Reparse System**: Admin tools for data refresh and quality improvement
+- **Complete Apple Integration**: Product names, impact analysis, device compatibility
 
 ## Roadmap
 
 - [ ] Email/webhook notifications for critical vulnerabilities
-- [ ] Historical trend analysis and vulnerability timeline charts
-- [ ] CVE severity score predictions using machine learning
-- [ ] Integration with additional vulnerability databases (MITRE, GitHub Security Advisory)
-- [ ] Advanced search with regex support and saved searches
-- [ ] Export functionality (CSV, JSON, PDF reports)
-- [ ] Real-time vulnerability feed subscriptions with webhooks
-
-## Development Notes & Troubleshooting
-
-### Apple Security Page Structure (as of September 2025)
-
-The Apple security pages follow a consistent structure that the parser relies on:
-
-1. **Main List Page**: `https://support.apple.com/en-us/100100`
-   - Contains a table with links to individual security bulletins
-   - Links follow pattern: `/en-us/XXXXXX` (e.g., `/en-us/125108` for iOS 26)
-
-2. **Individual Security Pages**: Each page has sections like:
-   ```html
-   <h3 class="gb-header">Product Name</h3>
-   <p class="gb-paragraph">Available for: device list</p>
-   <p class="gb-paragraph">Impact: security implications</p>
-   <p class="gb-paragraph">Description: how Apple fixed it</p>
-   <p class="gb-paragraph">CVE-XXXX-XXXX: researcher credit</p>
-   ```
-
-### Debugging Apple Context Parsing
-
-If Apple context parsing fails again:
-
-1. **Check the HTML structure**: Use curl to fetch a sample page:
-   ```bash
-   curl -s "https://support.apple.com/en-us/125108" | grep -A 10 -B 5 "gb-header"
-   ```
-
-2. **Verify section parsing**: The regex pattern expects `<h3 class="gb-header">` elements
-   - If Apple changes CSS classes, update the pattern in `extractFieldFromSection()`
-
-3. **Test manual scan**: Use the API endpoint to trigger manual scanning:
-   ```bash
-   curl -X POST "https://your-worker.workers.dev/api/scan/trigger"
-   ```
-
-4. **Check processing logs**: View recent scan results:
-   ```bash
-   curl "https://your-worker.workers.dev/api/logs"
-   ```
-
-### Known Limitations & Future Improvements
-
-1. **HTML Structure Dependency**: Parser relies on Apple's specific CSS classes and structure
-   - **Risk**: Apple could change their page structure
-   - **Mitigation**: Regular monitoring and fallback parsing methods
-
-2. **Rate Limiting**: NVD API has rate limits for CVSS score enrichment
-   - **Current**: Built-in rate limiting and caching
-   - **Future**: Consider getting an NVD API key for higher limits
-
-3. **Error Handling**: Current parser is robust but could be enhanced
-   - **Future**: Add more detailed error reporting and automatic retry logic
-
-### Session History
-
-- **Session 1**: Initial implementation with basic Apple parsing
-- **Session 2**: Enhanced UI, dynamic filtering, database integrity monitoring
-- **Session 3**: **MAJOR FIX** - Corrected Apple parsing logic based on actual HTML structure analysis
+- [ ] Historical trend analysis and charts
+- [ ] Export functionality (CSV, JSON, PDF)
+- [ ] Integration with additional vulnerability databases
+- [ ] Advanced search and saved queries
