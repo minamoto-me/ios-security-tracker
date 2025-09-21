@@ -99,6 +99,10 @@ export class ApiHandler {
         return await this.manualReparse(request, corsHeaders);
       }
 
+      if (method === 'POST' && path === '/admin/clear-cache') {
+        return await this.clearCachedUrls(request, corsHeaders);
+      }
+
       // Not found
       return new Response(
         JSON.stringify({ error: 'Not found', path }),
@@ -1341,6 +1345,84 @@ export class ApiHandler {
     }
 
     return 'MEDIUM';
+  }
+
+  private async clearCachedUrls(request: Request, headers: Record<string, string>): Promise<Response> {
+    try {
+      // Simple authentication check
+      const adminKey = request.headers.get('X-Admin-Key');
+      if (adminKey !== 'manual-reparse-2024') {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers }
+        );
+      }
+
+      const body = await request.json() as { versions: string[] };
+      const { versions } = body;
+
+      if (!versions || !Array.isArray(versions) || versions.length === 0) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid versions array' }),
+          { status: 400, headers }
+        );
+      }
+
+      console.log(`Clearing cached URLs for versions: ${versions.join(', ')}`);
+
+      const results = [];
+      for (const version of versions) {
+        try {
+          // Delete the cached iOS release record to force re-discovery
+          await this.env.DB.prepare("DELETE FROM ios_releases WHERE version = ?").bind(version).run();
+
+          // Also delete associated vulnerability records to ensure clean re-parse
+          await this.env.DB.prepare("DELETE FROM vulnerabilities WHERE ios_versions_affected = ?").bind(version).run();
+
+          results.push({
+            version,
+            success: true,
+            message: 'Cached URL and data cleared'
+          });
+
+          console.log(`Cleared cached data for iOS ${version}`);
+        } catch (error) {
+          console.error(`Failed to clear cache for iOS ${version}:`, error);
+          results.push({
+            version,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      }
+
+      const response = {
+        message: 'Cache clearing completed',
+        results,
+        summary: {
+          total_versions: versions.length,
+          successful: results.filter(r => r.success).length,
+          failed: results.filter(r => !r.success).length,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response, null, 2), { headers });
+
+    } catch (error) {
+      console.error('Cache clearing failed:', error);
+
+      const response = {
+        message: 'Cache clearing failed',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
   }
 
   private async getAvailableIOSVersions(headers: Record<string, string>): Promise<Response> {

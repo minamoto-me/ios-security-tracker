@@ -1,6 +1,6 @@
 # iOS Security Vulnerability Tracker
 
-An automated system that tracks iOS security vulnerabilities with rich Apple context and CVSS scores, built on Cloudflare's edge platform.
+An experimental vibe coding project that automatically tracks iOS security vulnerabilities with rich Apple context and CVSS scores, built entirely on Cloudflare's edge platform.
 
 🌐 **Live Demo**: [https://ios.minamoto.me](https://ios.minamoto.me)
 
