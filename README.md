@@ -292,15 +292,6 @@ For issues and questions:
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and debugging steps
 - [API Documentation](#api-documentation) - RESTful API endpoints and usage
 
-## Recent Updates
-
-### Version 1.0 - Apple Context Integration ✅
-
-- **Enhanced Apple Context Parsing**: Now extracts rich context from Apple security pages
-- **Improved UI/UX**: Visual separation of filters and sorting, precise iOS version matching
-- **Manual Reparse System**: Admin tools for data refresh and quality improvement
-- **Complete Apple Integration**: Product names, impact analysis, device compatibility
-
 ## Roadmap
 
 - [ ] Email/webhook notifications for critical vulnerabilities
@@ -309,10 +300,3 @@ For issues and questions:
 - [ ] Integration with additional vulnerability databases
 - [ ] Advanced search and saved queries
 
-## Changelog (Highlights)
-
-- 2025-09-21
-  - Exact iOS version matching: avoids 18.1 vs 18.1.1 collisions; validates cached URLs.
-  - Added discovery endpoint: `GET /api/apple/ios-releases` with optional `major` filter.
-  - Safe maintenance cleanup (FK-safe `clear-cache` order) and comprehensive iOS 18.x backfill.
-  - Moved NVD_API_KEY out of `wrangler.toml` (set via Worker Secret).
