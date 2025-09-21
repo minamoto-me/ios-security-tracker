@@ -46,6 +46,12 @@ export class ApiHandler {
         if (path === '/api/releases') {
           return await this.getIOSReleases(corsHeaders);
         }
+        if (path === '/api/ios-versions') {
+          return await this.getAvailableIOSVersions(corsHeaders);
+        }
+        if (path === '/api/database/integrity') {
+          return await this.checkDatabaseIntegrity(corsHeaders);
+        }
         if (path === '/api/logs') {
           return await this.getProcessingLogs(corsHeaders);
         }
@@ -969,5 +975,59 @@ export class ApiHandler {
       breakdown[severity] = (breakdown[severity] || 0) + 1;
     });
     return breakdown;
+  }
+
+  private async getAvailableIOSVersions(headers: Record<string, string>): Promise<Response> {
+    try {
+      const versions = await this.repository.getAvailableIOSVersions();
+
+      const response = {
+        ios_versions: versions,
+        count: versions.length,
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), { headers });
+    } catch (error) {
+      console.error('Failed to get iOS versions:', error);
+
+      const response = {
+        error: 'Failed to get iOS versions',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
+  }
+
+  private async checkDatabaseIntegrity(headers: Record<string, string>): Promise<Response> {
+    try {
+      const integrity = await this.repository.checkDatabaseIntegrity();
+
+      const response = {
+        database_integrity: integrity,
+        status: integrity.duplicate_cve_ids === 0 && integrity.duplicate_vulnerability_ids === 0 && integrity.duplicate_versions === 0 ? 'healthy' : 'issues_detected',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), { headers });
+    } catch (error) {
+      console.error('Failed to check database integrity:', error);
+
+      const response = {
+        error: 'Failed to check database integrity',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+      };
+
+      return new Response(JSON.stringify(response), {
+        status: 500,
+        headers
+      });
+    }
   }
 }

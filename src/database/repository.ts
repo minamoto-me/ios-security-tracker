@@ -8,20 +8,41 @@ export class VulnerabilityRepository {
   }
 
   async insertVulnerability(vulnerability: Omit<Vulnerability, 'created_at'>): Promise<void> {
+    // Ensure all values are properly defined (convert undefined to null)
+    const safeVulnerability = {
+      id: vulnerability.id || null,
+      cve_id: vulnerability.cve_id || null,
+      description: vulnerability.description || null,
+      severity: vulnerability.severity || null,
+      cvss_score: vulnerability.cvss_score !== undefined ? vulnerability.cvss_score : null,
+      cvss_vector: vulnerability.cvss_vector || null,
+      ios_versions_affected: vulnerability.ios_versions_affected || null,
+      discovered_date: vulnerability.discovered_date || null,
+      apple_description: vulnerability.apple_description || null,
+      apple_available_for: vulnerability.apple_available_for || null,
+      apple_impact: vulnerability.apple_impact || null,
+      apple_product: vulnerability.apple_product || null,
+    };
+
     await this.db.prepare(`
       INSERT OR REPLACE INTO vulnerabilities (
         id, cve_id, description, severity, cvss_score, cvss_vector,
-        ios_versions_affected, discovered_date, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ios_versions_affected, discovered_date, updated_at,
+        apple_description, apple_available_for, apple_impact, apple_product
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
     `).bind(
-      vulnerability.id,
-      vulnerability.cve_id,
-      vulnerability.description,
-      vulnerability.severity,
-      vulnerability.cvss_score,
-      vulnerability.cvss_vector,
-      vulnerability.ios_versions_affected,
-      vulnerability.discovered_date
+      safeVulnerability.id,
+      safeVulnerability.cve_id,
+      safeVulnerability.description,
+      safeVulnerability.severity,
+      safeVulnerability.cvss_score,
+      safeVulnerability.cvss_vector,
+      safeVulnerability.ios_versions_affected,
+      safeVulnerability.discovered_date,
+      safeVulnerability.apple_description,
+      safeVulnerability.apple_available_for,
+      safeVulnerability.apple_impact,
+      safeVulnerability.apple_product
     ).run();
   }
 
@@ -166,6 +187,47 @@ export class VulnerabilityRepository {
     return (result.results as unknown) as ProcessingLog[];
   }
 
+  async getAvailableIOSVersions(): Promise<string[]> {
+    const result = await this.db.prepare(`
+      SELECT DISTINCT ios_versions_affected
+      FROM vulnerabilities
+      WHERE ios_versions_affected IS NOT NULL
+      ORDER BY ios_versions_affected DESC
+    `).all();
+
+    const versions = (result.results as any[])
+      .map(row => row.ios_versions_affected)
+      .filter(version => version && version.trim().length > 0);
+
+    // Extract individual versions from comma-separated strings
+    const allVersions = new Set<string>();
+    versions.forEach(versionString => {
+      // Split by comma and extract version numbers
+      const parts = versionString.split(',');
+      parts.forEach(part => {
+        const match = part.trim().match(/(\d+(?:\.\d+)*)/);
+        if (match) {
+          allVersions.add(match[1]);
+        }
+      });
+    });
+
+    // Sort versions in descending order
+    return Array.from(allVersions).sort((a, b) => {
+      const aParts = a.split('.').map(Number);
+      const bParts = b.split('.').map(Number);
+
+      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+        const aVal = aParts[i] || 0;
+        const bVal = bParts[i] || 0;
+        if (aVal !== bVal) {
+          return bVal - aVal; // Descending order
+        }
+      }
+      return 0;
+    });
+  }
+
   async linkVulnerabilityToRelease(vulnerabilityId: string, releaseId: number): Promise<void> {
     await this.db.prepare(`
       INSERT OR IGNORE INTO vulnerability_releases (vulnerability_id, ios_release_id)
@@ -182,6 +244,56 @@ export class VulnerabilityRepository {
     `).bind(releaseId).all();
 
     return (result.results as unknown) as Vulnerability[];
+  }
+
+  async checkDatabaseIntegrity(): Promise<{
+    total_vulnerabilities: number;
+    duplicate_cve_ids: number;
+    duplicate_vulnerability_ids: number;
+    total_ios_releases: number;
+    duplicate_versions: number;
+  }> {
+    // Check for duplicate CVE IDs
+    const duplicateCves = await this.db.prepare(`
+      SELECT COUNT(*) as count FROM (
+        SELECT cve_id, COUNT(*) as occurrences
+        FROM vulnerabilities
+        GROUP BY cve_id
+        HAVING COUNT(*) > 1
+      )
+    `).first();
+
+    // Check for duplicate vulnerability IDs
+    const duplicateIds = await this.db.prepare(`
+      SELECT COUNT(*) as count FROM (
+        SELECT id, COUNT(*) as occurrences
+        FROM vulnerabilities
+        GROUP BY id
+        HAVING COUNT(*) > 1
+      )
+    `).first();
+
+    // Check for duplicate iOS versions
+    const duplicateVersions = await this.db.prepare(`
+      SELECT COUNT(*) as count FROM (
+        SELECT version, COUNT(*) as occurrences
+        FROM ios_releases
+        GROUP BY version
+        HAVING COUNT(*) > 1
+      )
+    `).first();
+
+    // Get total counts
+    const totalVulns = await this.db.prepare('SELECT COUNT(*) as count FROM vulnerabilities').first();
+    const totalReleases = await this.db.prepare('SELECT COUNT(*) as count FROM ios_releases').first();
+
+    return {
+      total_vulnerabilities: (totalVulns as any)?.count || 0,
+      duplicate_cve_ids: (duplicateCves as any)?.count || 0,
+      duplicate_vulnerability_ids: (duplicateIds as any)?.count || 0,
+      total_ios_releases: (totalReleases as any)?.count || 0,
+      duplicate_versions: (duplicateVersions as any)?.count || 0,
+    };
   }
 
   async getVulnerabilityStats(): Promise<{

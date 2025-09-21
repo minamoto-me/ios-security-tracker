@@ -5,13 +5,17 @@ An automated system built with Cloudflare Workers that tracks iOS security vulne
 ## Features
 
 - 🔄 **Automated Weekly Scanning**: Scheduled cron job runs every Monday to scan for new iOS vulnerabilities
-- 🍎 **Apple Security Integration**: Parses Apple's security release pages for iOS vulnerabilities
-- 📊 **CVSS Enrichment**: Fetches CVSS scores and vectors from NVD API
-- 🗄️ **Persistent Storage**: Uses Cloudflare D1 database for structured data storage
-- 🌐 **Public API**: RESTful API with filtering, pagination, and search capabilities
-- 🎨 **Modern Web Interface**: Responsive website for browsing vulnerabilities
-- 📈 **Monitoring & Alerts**: Comprehensive logging and alerting system
-- ⚡ **High Performance**: Global CDN distribution via Cloudflare
+- 🍎 **Enhanced Apple Security Integration**: Parses Apple's security release pages with full context extraction
+  - **Apple Product Information**: Extracts specific Apple products affected (e.g., "Apple Neural Engine", "CoreMedia", "Safari")
+  - **Impact Analysis**: Security implications for users from Apple's assessments
+  - **Fix Descriptions**: How Apple addressed each vulnerability
+  - **Device Compatibility**: Which devices and iOS versions are affected
+- 📊 **CVSS Enrichment**: Fetches CVSS scores and vectors from NVD API with intelligent rate limiting
+- 🗄️ **Robust Data Storage**: Uses Cloudflare D1 database with duplicate prevention and integrity checks
+- 🌐 **Dynamic Public API**: RESTful API with smart filtering, pagination, and real-time iOS version detection
+- 🎨 **Modern Responsive Web Interface**: Beautiful, mobile-optimized website with enhanced vulnerability modals
+- 📈 **Comprehensive Monitoring**: Real-time health checks, database integrity monitoring, and processing logs
+- ⚡ **High Performance**: Global CDN distribution via Cloudflare with optimized caching
 
 ## Architecture
 
@@ -85,10 +89,13 @@ npm run deploy
 List vulnerabilities with filtering and pagination.
 
 **Query Parameters:**
-- `limit` (number, max 100, default 50): Number of results
+- `limit` (number, max 100, default 20): Number of results
 - `offset` (number, default 0): Pagination offset
 - `severity` (string): Filter by severity (LOW, MEDIUM, HIGH, CRITICAL)
 - `search` (string): Search in CVE ID and description
+- `ios_version` (string): Filter by iOS version (dynamically populated from database)
+- `sort_by` (string): Sort by field (discovered_date, cvss_score, severity, cve_id)
+- `sort_order` (string): Sort order (asc, desc)
 
 **Example:**
 ```bash
@@ -109,11 +116,17 @@ Get vulnerability statistics.
 #### GET /api/releases
 List iOS security releases.
 
+#### GET /api/ios-versions
+Get available iOS versions from database (for dynamic filtering).
+
+#### GET /api/database/integrity
+Check database integrity and duplicate prevention.
+
 #### GET /api/health
-System health check.
+System health check with database connectivity and scan status.
 
 #### GET /api/logs
-Recent processing logs.
+Recent processing logs with detailed execution information.
 
 ### Response Format
 
@@ -139,10 +152,14 @@ All API responses follow this structure:
 
 The system uses the following main tables:
 
-- **vulnerabilities**: CVE data with CVSS scores
-- **ios_releases**: iOS version release information
-- **processing_logs**: Scan execution logs
+- **vulnerabilities**: CVE data with CVSS scores and Apple context information
+  - Core fields: id, cve_id, description, severity, cvss_score, cvss_vector
+  - Apple context: apple_product, apple_impact, apple_description, apple_available_for
+  - Metadata: ios_versions_affected, discovered_date, created_at, updated_at
+- **ios_releases**: iOS version release information with processing status
+- **processing_logs**: Detailed scan execution logs with success/failure tracking
 - **vulnerability_releases**: Links vulnerabilities to iOS releases
+- **migrations**: Database schema version tracking
 
 ## Monitoring
 
@@ -240,12 +257,21 @@ For issues and questions:
 - Check recent alerts for system issues
 - Consult Cloudflare Workers documentation for platform-specific issues
 
+## Recent Achievements (2025)
+
+- ✅ **Enhanced Apple Context Parsing**: Now extracts Apple product names, impact descriptions, fix details, and device compatibility
+- ✅ **Dynamic iOS Version Filtering**: Automatically populates filter options based on available data in database
+- ✅ **Improved Vulnerability Modal**: Beautiful display of Apple-specific security information with color-coded sections
+- ✅ **Database Integrity Monitoring**: Real-time duplicate detection and data validation
+- ✅ **Responsive Design Overhaul**: Modern, mobile-first interface with enhanced readability
+- ✅ **Robust Error Handling**: Comprehensive undefined value protection and graceful degradation
+
 ## Roadmap
 
 - [ ] Email/webhook notifications for critical vulnerabilities
-- [ ] Historical trend analysis
-- [ ] CVE severity score predictions
-- [ ] Integration with additional vulnerability databases
-- [ ] Enhanced search and filtering capabilities
-- [ ] Export functionality (CSV, JSON)
-- [ ] Vulnerability feed subscriptions
+- [ ] Historical trend analysis and vulnerability timeline charts
+- [ ] CVE severity score predictions using machine learning
+- [ ] Integration with additional vulnerability databases (MITRE, GitHub Security Advisory)
+- [ ] Advanced search with regex support and saved searches
+- [ ] Export functionality (CSV, JSON, PDF reports)
+- [ ] Real-time vulnerability feed subscriptions with webhooks

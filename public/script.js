@@ -18,6 +18,7 @@ class VulnerabilityTracker {
 
     async init() {
         this.setupEventListeners();
+        await this.loadIOSVersions();
         await this.loadStats();
         await this.loadVulnerabilities();
         await this.loadSystemStatus();
@@ -57,6 +58,36 @@ class VulnerabilityTracker {
         closeBtn?.addEventListener('click', () => this.closeModal());
         window.addEventListener('click', (e) => {
             if (e.target === modal) this.closeModal();
+        });
+    }
+
+    async loadIOSVersions() {
+        try {
+            const response = await fetch(`${this.apiBase}/ios-versions`);
+            if (!response.ok) throw new Error('Failed to load iOS versions');
+
+            const data = await response.json();
+            this.populateIOSVersionFilter(data.ios_versions);
+        } catch (error) {
+            console.error('Error loading iOS versions:', error);
+            // Fall back to hardcoded versions if API fails
+            this.populateIOSVersionFilter(['18.7', '18.6', '18.5', '18.4', '18.3']);
+        }
+    }
+
+    populateIOSVersionFilter(versions) {
+        const iosVersionFilter = document.getElementById('iosVersionFilter');
+        if (!iosVersionFilter) return;
+
+        // Keep the "All iOS Versions" option
+        iosVersionFilter.innerHTML = '<option value="">All iOS Versions</option>';
+
+        // Add dynamic versions from database
+        versions.forEach(version => {
+            const option = document.createElement('option');
+            option.value = version;
+            option.textContent = `iOS ${version}`;
+            iosVersionFilter.appendChild(option);
         });
     }
 
@@ -328,6 +359,8 @@ class VulnerabilityTracker {
                     <p>${vuln.description}</p>
                 </div>
 
+                ${this.generateAppleContextSection(vuln)}
+
                 <div class="detail-grid">
                     <div class="detail-item">
                         <strong>CVSS Score:</strong>
@@ -359,6 +392,49 @@ class VulnerabilityTracker {
                         <i class="fas fa-external-link-alt"></i> View on NVD
                     </a>
                 </div>
+            </div>
+        `;
+    }
+
+    generateAppleContextSection(vuln) {
+        // Only show Apple context if we have any Apple-specific information
+        const hasAppleContext = vuln.apple_description || vuln.apple_available_for || vuln.apple_impact || vuln.apple_product;
+
+        if (!hasAppleContext) {
+            return '';
+        }
+
+        return `
+            <div class="apple-context-section mb-2">
+                <h3><i class="fab fa-apple"></i> Apple Security Information</h3>
+
+                ${vuln.apple_product ? `
+                    <div class="apple-detail-item mb-1">
+                        <strong>Apple Product:</strong>
+                        <p class="apple-product">${vuln.apple_product}</p>
+                    </div>
+                ` : ''}
+
+                ${vuln.apple_impact ? `
+                    <div class="apple-detail-item mb-1">
+                        <strong>Impact:</strong>
+                        <p class="apple-impact">${vuln.apple_impact}</p>
+                    </div>
+                ` : ''}
+
+                ${vuln.apple_description ? `
+                    <div class="apple-detail-item mb-1">
+                        <strong>How Apple Fixed It:</strong>
+                        <p class="apple-description">${vuln.apple_description}</p>
+                    </div>
+                ` : ''}
+
+                ${vuln.apple_available_for ? `
+                    <div class="apple-detail-item mb-1">
+                        <strong>Available For:</strong>
+                        <p class="apple-available-for">${vuln.apple_available_for}</p>
+                    </div>
+                ` : ''}
             </div>
         `;
     }

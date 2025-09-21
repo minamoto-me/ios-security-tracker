@@ -20,6 +20,16 @@ export class DatabaseMigrations {
           name: 'initial_schema',
           sql: this.getInitialSchemaSql()
         },
+        {
+          version: 2,
+          name: 'add_apple_context_fields',
+          sql: this.getAppleContextMigrationSql()
+        },
+        {
+          version: 3,
+          name: 'add_apple_product_field',
+          sql: this.getAppleProductMigrationSql()
+        },
       ];
 
       for (const migration of migrations) {
@@ -56,8 +66,16 @@ export class DatabaseMigrations {
 
     console.log(`Applying migration ${migration.version}: ${migration.name}`);
 
-    // Apply migration - skip this since tables are already created manually
-    // await this.db.exec(migration.sql);
+    // Apply migration
+    if (migration.version > 1) {
+      // For new migrations, execute the SQL
+      const statements = migration.sql.split(';').filter(s => s.trim());
+      for (const statement of statements) {
+        if (statement.trim()) {
+          await this.db.prepare(statement.trim()).run();
+        }
+      }
+    }
 
     // Record migration
     await this.db.prepare(
@@ -126,6 +144,22 @@ export class DatabaseMigrations {
       CREATE INDEX IF NOT EXISTS idx_ios_releases_release_date ON ios_releases(release_date);
       CREATE INDEX IF NOT EXISTS idx_processing_logs_run_date ON processing_logs(run_date);
       CREATE INDEX IF NOT EXISTS idx_processing_logs_status ON processing_logs(status);
+    `;
+  }
+
+  private getAppleContextMigrationSql(): string {
+    return `
+      -- Add Apple-specific context fields to vulnerabilities table
+      ALTER TABLE vulnerabilities ADD COLUMN apple_description TEXT;
+      ALTER TABLE vulnerabilities ADD COLUMN apple_available_for TEXT;
+      ALTER TABLE vulnerabilities ADD COLUMN apple_impact TEXT;
+    `;
+  }
+
+  private getAppleProductMigrationSql(): string {
+    return `
+      -- Add Apple product field to vulnerabilities table
+      ALTER TABLE vulnerabilities ADD COLUMN apple_product TEXT;
     `;
   }
 }

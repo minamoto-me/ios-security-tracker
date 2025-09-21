@@ -8,6 +8,10 @@ export interface Vulnerability {
   ios_versions_affected: string;
   discovered_date: string;
   created_at: string;
+  apple_description?: string;
+  apple_available_for?: string;
+  apple_impact?: string;
+  apple_product?: string;
 }
 
 export interface IOSRelease {
@@ -68,6 +72,10 @@ export interface AppleSecurityRelease {
   vulnerabilities: Array<{
     cveId: string;
     description: string;
+    appleDescription?: string;
+    availableFor?: string;
+    impact?: string;
+    product?: string;
   }>;
 }
 

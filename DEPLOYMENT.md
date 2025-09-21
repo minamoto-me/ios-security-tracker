@@ -2,6 +2,21 @@
 
 This guide walks through deploying the iOS Security Vulnerability Tracker to Cloudflare.
 
+## 🏆 Recent System Enhancements (2025)
+
+The system has been significantly enhanced with new features:
+
+- ✅ **Enhanced Apple Context Parsing**: Now extracts Apple product names, impact descriptions, fix details, and device compatibility
+- ✅ **Dynamic iOS Version Filtering**: Automatically populates filter options based on available data in database
+- ✅ **Improved Vulnerability Modal**: Beautiful display of Apple-specific security information with color-coded sections
+- ✅ **Database Integrity Monitoring**: Real-time duplicate detection and data validation
+- ✅ **Responsive Design Overhaul**: Modern, mobile-first interface with enhanced readability
+- ✅ **Robust Error Handling**: Comprehensive undefined value protection and graceful degradation
+
+### New API Endpoints
+- `/api/ios-versions` - Dynamic iOS version filtering (auto-populated from database)
+- `/api/database/integrity` - Database integrity monitoring with duplicate checks
+
 ## Prerequisites
 
 - Cloudflare account with Workers and D1 enabled
@@ -142,6 +157,10 @@ curl "https://your-worker.your-subdomain.workers.dev/api/logs"
 
 # Test API endpoints
 curl "https://your-worker.your-subdomain.workers.dev/api/vulnerabilities?limit=5"
+
+# Test new endpoints
+curl "https://your-worker.your-subdomain.workers.dev/api/ios-versions"
+curl "https://your-worker.your-subdomain.workers.dev/api/database/integrity"
 ```
 
 ## Step 7: Monitoring Setup
@@ -161,6 +180,12 @@ curl "https://your-worker.your-subdomain.workers.dev/api/logs"
 
 # Check vulnerability stats
 curl "https://your-worker.your-subdomain.workers.dev/api/vulnerabilities/stats"
+
+# Monitor database integrity
+curl "https://your-worker.your-subdomain.workers.dev/api/database/integrity"
+
+# Check available iOS versions
+curl "https://your-worker.your-subdomain.workers.dev/api/ios-versions"
 ```
 
 ## Step 8: Environment-Specific Configuration

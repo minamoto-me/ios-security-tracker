@@ -5,7 +5,13 @@ export class AppleSecurityParser {
   private static readonly IOS_VERSION_REGEX = /iOS\s+(\d+(?:\.\d+)*(?:\.\d+)?)/gi;
 
   static parseSecurityContent(html: string, version: string): AppleSecurityRelease {
-    const vulnerabilities: Array<{ cveId: string; description: string }> = [];
+    const vulnerabilities: Array<{
+      cveId: string;
+      description: string;
+      appleDescription?: string;
+      availableFor?: string;
+      impact?: string;
+    }> = [];
 
     // Apple security pages use <p class="gb-paragraph"> elements containing CVE information
     // Parse HTML to find these elements (simplified approach without full DOM parser)
@@ -29,9 +35,16 @@ export class AppleSecurityParser {
             // Extract description from the paragraph content
             const description = this.extractDescriptionFromParagraph(paragraphContent, cveId);
             if (description) {
+              // Extract Apple-specific context for this CVE
+              const appleContext = this.extractAppleContext(html, cveId);
+
               vulnerabilities.push({
                 cveId,
                 description: this.cleanDescription(description),
+                appleDescription: appleContext.description,
+                availableFor: appleContext.availableFor,
+                impact: appleContext.impact,
+                product: appleContext.product,
               });
               console.log(`Found CVE ${cveId}: ${description.substring(0, 100)}...`);
             }
@@ -52,9 +65,16 @@ export class AppleSecurityParser {
               foundCves.add(cveId);
               const description = this.extractDescriptionFromParagraph(paragraphContent, cveId);
               if (description) {
+                // Extract Apple-specific context for this CVE
+                const appleContext = this.extractAppleContext(html, cveId);
+
                 vulnerabilities.push({
                   cveId,
                   description: this.cleanDescription(description),
+                  appleDescription: appleContext.description,
+                  availableFor: appleContext.availableFor,
+                  impact: appleContext.impact,
+                  product: appleContext.product,
                 });
                 console.log(`Found CVE ${cveId} (fallback): ${description.substring(0, 100)}...`);
               }
@@ -73,6 +93,75 @@ export class AppleSecurityParser {
       releaseDate,
       vulnerabilities,
     };
+  }
+
+  private static extractAppleContext(html: string, cveId: string): {
+    description?: string;
+    availableFor?: string;
+    impact?: string;
+    product?: string;
+  } {
+    const context = { description: undefined, availableFor: undefined, impact: undefined, product: undefined };
+
+    // Find the CVE in the HTML
+    const cveIndex = html.toLowerCase().indexOf(cveId.toLowerCase());
+    if (cveIndex === -1) return context;
+
+    // Extract a larger section around the CVE to look for Apple's structured information
+    const searchRadius = 2000; // Look 2000 characters before and after
+    const startIndex = Math.max(0, cveIndex - searchRadius);
+    const endIndex = Math.min(html.length, cveIndex + searchRadius);
+    const sectionHtml = html.substring(startIndex, endIndex);
+
+    // Extract all elements (headers and paragraphs) in this section
+    const allElementsPattern = /<(h[1-6]|p)[^>]*(?:class="[^"]*gb-(?:header|paragraph)[^"]*"[^>]*)?>([^<]*(?:<[^>]*>[^<]*)*?)<\/\1>/gi;
+    let match;
+    const elements: { type: string; content: string }[] = [];
+
+    while ((match = allElementsPattern.exec(sectionHtml)) !== null) {
+      const elementType = match[1];
+      const elementContent = match[2].replace(/<[^>]*>/g, ' ').replace(/&[^;]+;/g, ' ').trim();
+      if (elementContent) {
+        elements.push({ type: elementType, content: elementContent });
+      }
+    }
+
+    // Look for Apple product as a header before "Available for"
+    for (let i = 0; i < elements.length; i++) {
+      const element = elements[i];
+
+      // Check if this is a header that could be an Apple product
+      if (element.type.match(/^h[1-6]$/i) && element.content && element.content.length > 0) {
+        // Look ahead to see if the next elements contain "Available for", "Impact", or "Description"
+        const nextElements = elements.slice(i + 1, i + 4); // Check next 3 elements
+        const hasAppleContext = nextElements.some(el =>
+          el.content.match(/^(Available for|Impact|Description):/i)
+        );
+
+        if (hasAppleContext && !context.product) {
+          // This header is likely the Apple product
+          context.product = element.content.trim();
+        }
+      }
+
+      // Process paragraphs for Apple-specific patterns
+      if (element.type === 'p') {
+        // Available for pattern
+        if (element.content.match(/^Available for:/i)) {
+          context.availableFor = element.content.replace(/^Available for:\s*/i, '').trim();
+        }
+        // Impact pattern
+        else if (element.content.match(/^Impact:/i)) {
+          context.impact = element.content.replace(/^Impact:\s*/i, '').trim();
+        }
+        // Description pattern (Apple's fix description)
+        else if (element.content.match(/^Description:/i)) {
+          context.description = element.content.replace(/^Description:\s*/i, '').trim();
+        }
+      }
+    }
+
+    return context;
   }
 
   private static extractCVEDescription(html: string, cveId: string): string | null {
