@@ -1391,7 +1391,10 @@ export class ApiHandler {
               release_date: new Date().toISOString().split('T')[0],
               security_content_url: url,
             });
-          } catch {}
+          } catch (error) {
+            // Ignore duplicate insertion or transient errors while caching discovered URL
+            console.warn(`Failed to cache discovered URL for iOS ${version}`, error);
+          }
           return url;
         }
       } catch (e) {
