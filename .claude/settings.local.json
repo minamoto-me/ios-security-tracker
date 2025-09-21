@@ -6,7 +6,8 @@
       "Bash(npm run deploy:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npx wrangler pages deploy:*)"
+      "Bash(npx wrangler pages deploy:*)",
+      "Bash(npm run lint:*)"
     ],
     "deny": [],
     "ask": []

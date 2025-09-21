@@ -1,6 +1,6 @@
 # iOS Security Vulnerability Tracker
 
-An experimental vibe coding project that automatically tracks iOS security vulnerabilities with rich Apple context and CVSS scores, built entirely on Cloudflare's edge platform.
+An automated system that tracks iOS security vulnerabilities with rich Apple context and CVSS scores, built on Cloudflare's edge platform.
 
 🌐 **Live Demo**: [https://ios.minamoto.me](https://ios.minamoto.me)
 
@@ -15,11 +15,15 @@ An experimental vibe coding project that automatically tracks iOS security vulne
 
 ## Architecture
 
-Built entirely on **Cloudflare's Edge Platform**:
-- **Workers**: TypeScript backend with scheduled tasks
-- **D1 Database**: SQLite-compatible with schema migrations
-- **Pages**: Static frontend with global CDN
-- **KV Storage**: Caching and performance optimization
+Built on **Cloudflare's Edge Platform**:
+- **Workers (API + Cron)**: TypeScript backend (src/index.ts, src/api/handler.ts) serving REST endpoints and a weekly scheduled scan.
+- **D1 (Database)**: SQLite-compatible storage for canonical data (vulnerabilities, iOS releases, logs) with migrations.
+- **KV (Cache & Telemetry)**: Caches NVD CVSS/description lookups and stores lightweight metrics/alerts with TTLs.
+- **Pages (Frontend)**: Static site (`public/`) that calls the Worker API over HTTPS.
+
+Why both D1 and KV?
+- D1 is for durable, relational queries (filtering, pagination, stats, integrity checks).
+- KV is for fast, globally cached lookups (NVD responses), recent alerts, and simple metrics.
 
 ## Quick Start
 
@@ -67,7 +71,16 @@ id = "your-kv-namespace-id-here"
 preview_id = "your-preview-kv-namespace-id-here"
 ```
 
-### 4. Deploy
+### 4. Add Secrets (Highly Recommended)
+
+Do NOT store secrets in `wrangler.toml`. Add your NVD API key as a Worker secret:
+
+```bash
+npx wrangler secret put NVD_API_KEY
+# paste your key when prompted
+```
+
+### 5. Deploy
 
 ```bash
 # Deploy the Worker
@@ -114,6 +127,9 @@ List iOS security releases.
 
 #### GET /api/ios-versions
 Get available iOS versions from database (for dynamic filtering).
+
+#### GET /api/apple/ios-releases
+Discover iOS security release links parsed from Apple’s main page. Optional `major` filter (e.g., `major=18`).
 
 #### GET /api/database/integrity
 Check database integrity and duplicate prevention.
@@ -171,7 +187,7 @@ The system includes comprehensive monitoring:
 - CORS headers configured for API access
 - Content Security Policy headers
 - Input validation and sanitization
-- Rate limiting considerations
+- Rate limiting considerations (NVD lookups are rate-limited and cached; API rate limiting is planned)
 - No sensitive data exposure
 
 ## Development
@@ -233,6 +249,17 @@ To modify, update the `crons` array in `wrangler.toml`.
 - D1 database size limit (10GB per database)
 - Worker execution time limits (CPU time and duration)
 
+## Admin & Maintenance
+
+These endpoints are intended for maintenance and require header `X-Admin-Key` (update to your secret):
+
+- `POST /admin/reparse` — force re-parse specific versions with optional `forceUpdate`.
+  - Body: `{ "versions": ["18.4.1", "18.3.2"], "forceUpdate": true }`
+- `POST /admin/clear-cache` — clear cached URL and data for versions to re-discover and re-ingest.
+  - Body: `{ "versions": ["18.4", "18.3"] }`
+
+Note: Re-parse logic performs exact iOS version matching (e.g., 18.1 will not collide with 18.1.1) and validates cached URLs.
+
 ## Contributing
 
 1. Fork the repository
@@ -281,3 +308,11 @@ For issues and questions:
 - [ ] Export functionality (CSV, JSON, PDF)
 - [ ] Integration with additional vulnerability databases
 - [ ] Advanced search and saved queries
+
+## Changelog (Highlights)
+
+- 2025-09-21
+  - Exact iOS version matching: avoids 18.1 vs 18.1.1 collisions; validates cached URLs.
+  - Added discovery endpoint: `GET /api/apple/ios-releases` with optional `major` filter.
+  - Safe maintenance cleanup (FK-safe `clear-cache` order) and comprehensive iOS 18.x backfill.
+  - Moved NVD_API_KEY out of `wrangler.toml` (set via Worker Secret).

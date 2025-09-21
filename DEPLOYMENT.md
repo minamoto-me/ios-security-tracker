@@ -12,6 +12,10 @@ The system has been significantly enhanced with new features:
 - ✅ **Database Integrity Monitoring**: Real-time duplicate detection and data validation
 - ✅ **Responsive Design Overhaul**: Modern, mobile-first interface with enhanced readability
 - ✅ **Robust Error Handling**: Comprehensive undefined value protection and graceful degradation
+- ✅ **Exact iOS Version Matching**: Prevents 18.1 from matching 18.1.1; validates cached URLs.
+- ✅ **Discovery Endpoint**: `GET /api/apple/ios-releases` to list available releases (supports `?major=18`).
+- ✅ **FK-safe Cleanup**: Admin clear-cache now deletes relations first, then data.
+- ✅ **Secret Hygiene**: `NVD_API_KEY` moved to Worker Secret (removed from wrangler.toml).
 
 ### New API Endpoints
 - `/api/ios-versions` - Dynamic iOS version filtering (auto-populated from database)
@@ -75,6 +79,15 @@ database_id = "your-actual-database-id-here"
 binding = "CACHE"
 id = "your-actual-kv-namespace-id-here"
 preview_id = "your-actual-preview-kv-namespace-id-here"
+```
+
+### 2.4 Add Secrets
+
+Add the NVD API key as a secret — do NOT store in wrangler.toml:
+
+```bash
+npx wrangler secret put NVD_API_KEY
+# paste your key when prompted
 ```
 
 ## Step 3: Deploy the Worker

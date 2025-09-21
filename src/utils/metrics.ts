@@ -50,7 +50,6 @@ export class Metrics {
     execution_time_ms: number;
     errors?: string | null;
   }): Promise<void> {
-    const timestamp = new Date().toISOString();
 
     await Promise.all([
       this.recordMetric('scan.vulnerabilities_found', results.vulnerabilities_found),

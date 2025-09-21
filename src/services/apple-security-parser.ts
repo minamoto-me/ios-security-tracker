@@ -61,7 +61,7 @@ export class AppleSecurityParser {
     }
 
     // Extract release date from the page
-    const releaseDate = this.extractReleaseDate(html, version);
+    const releaseDate = this.extractReleaseDate(html);
 
     console.log(`Parsed ${vulnerabilities.length} vulnerabilities for iOS ${version}`);
     return {
@@ -336,7 +336,7 @@ export class AppleSecurityParser {
     return description.trim() || 'Security vulnerability addressed in this update.';
   }
 
-  private static extractReleaseDate(html: string, version: string): string {
+  private static extractReleaseDate(html: string): string {
     // Look for common date patterns in Apple security pages
     const datePatterns = [
       // Pattern 1: "released on Month DD, YYYY"

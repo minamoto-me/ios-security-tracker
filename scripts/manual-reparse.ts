@@ -167,16 +167,25 @@ export class ManualReparser {
 
       // Look for links containing this iOS version
       const patterns = [
-        new RegExp(`<a[^>]+href="([^"]*\\/en-us\\/HT\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}[^<]*)`, 'gi'),
-        new RegExp(`<a[^>]+href="([^"]*\\/en-us\\/\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}[^<]*)`, 'gi'),
+        // Strict negative lookahead after version to avoid partial matches like 18.1.1 when searching 18.1
+        new RegExp(`<a[^>]+href="([^"]*\\/en-us\\/HT\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}(?![\\d.])[^<]*)`, 'gi'),
+        new RegExp(`<a[^>]+href="([^"]*\\/en-us\\/\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}(?![\\d.])[^<]*)`, 'gi'),
       ];
 
       for (const pattern of patterns) {
+        pattern.lastIndex = 0;
         const match = pattern.exec(html);
         if (match) {
+          const linkText = match[2] || '';
+          const vMatch = linkText.match(/iOS\s+(\d+(?:\.\d+)*)/i);
+          if (!vMatch || vMatch[1] !== version) {
+            console.log(`Skipping non-exact version match for iOS ${version}: ${linkText}`);
+            continue;
+          }
+
           const relativeUrl = match[1];
           const url = relativeUrl.startsWith('http') ? relativeUrl : `${this.env.APPLE_SECURITY_BASE_URL}${relativeUrl}`;
-          console.log(`Found security page for iOS ${version}: ${match[2]} -> ${url}`);
+          console.log(`Found security page for iOS ${version}: ${linkText} -> ${url}`);
           return url;
         }
       }
@@ -194,7 +203,9 @@ export class ManualReparser {
           });
           if (testResponse.ok) {
             const testHtml = await testResponse.text();
-            if (testHtml.includes(`iOS ${version}`) || testHtml.includes(`iOS${version}`)) {
+            // Ensure we don't match longer versions (e.g., 18.1.1 when searching 18.1)
+            const exact = new RegExp(`iOS\\s+${this.escapeRegex(version)}(?![\\d.])`, 'i');
+            if (exact.test(testHtml)) {
               console.log(`Found iOS ${version} content at: ${url}`);
               return url;
             }

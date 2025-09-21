@@ -38,7 +38,38 @@ This guide covers common issues and debugging steps for the iOS Security Vulnera
      -H "Content-Type: application/json" \
      -H "X-Admin-Key: manual-reparse-2024" \
      -d '{"versions": ["26"], "forceUpdate": true}'
+  ```
+
+### Exact Version Confusion (e.g., 18.1 vs 18.1.1)
+
+**Symptoms**:
+- 18.1 data appears under 18.1.1 (or vice versa)
+
+**Status**: Fixed — parser now enforces exact iOS version matches and validates cached URLs.
+
+**Recovery**:
+1. Clear data for the affected versions (FK-safe order is built-in):
+   ```bash
+   curl -X POST "https://your-worker.workers.dev/admin/clear-cache" \
+     -H "Content-Type: application/json" \
+     -H "X-Admin-Key: manual-reparse-2024" \
+     -d '{"versions": ["18.1", "18.1.1"]}'
    ```
+2. Force reparse with exact match logic:
+   ```bash
+   curl -X POST "https://your-worker.workers.dev/admin/reparse" \
+     -H "Content-Type: application/json" \
+     -H "X-Admin-Key: manual-reparse-2024" \
+     -d '{"versions": ["18.1", "18.1.1"], "forceUpdate": true}'
+   ```
+
+### Missing iOS Versions
+
+**Find what Apple exposes**:
+```bash
+curl "https://your-worker.workers.dev/api/apple/ios-releases?major=18"
+```
+Then reparse specific versions as needed via `/admin/reparse`.
 
 ### NVD API Rate Limiting
 
@@ -51,6 +82,7 @@ This guide covers common issues and debugging steps for the iOS Security Vulnera
 1. **Check Rate Limiting**: The system has built-in delays (100ms between requests)
 2. **Monitor API Health**: Check NVD API status at https://nvd.nist.gov/
 3. **Retry Failed CVEs**: Use manual reparse to retry failed lookups
+4. **Use Secrets**: Store `NVD_API_KEY` as a Worker Secret (no plaintext in wrangler.toml)
 
 ### Database Connection Issues
 
@@ -162,7 +194,7 @@ This guide covers common issues and debugging steps for the iOS Security Vulnera
 1. ✅ `wrangler.toml` configuration matches Cloudflare dashboard
 2. ✅ D1 database exists and has correct schema
 3. ✅ KV namespace exists for caching
-4. ✅ Environment variables are set correctly
+4. ✅ Environment variables and Secrets are set correctly (e.g., `NVD_API_KEY` via Secret)
 5. ✅ Custom domain (if any) points to correct Worker
 
 ## Monitoring and Alerting

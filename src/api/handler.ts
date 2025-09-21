@@ -58,6 +58,9 @@ export class ApiHandler {
         if (path === '/api/health') {
           return await this.getHealthCheck(corsHeaders);
         }
+        if (path === '/api/apple/ios-releases') {
+          return await this.getDiscoveredIOSReleases(new URL(request.url), corsHeaders);
+        }
         if (path === '/' || path === '/api') {
           return await this.getApiInfo(corsHeaders);
         }
@@ -840,15 +843,23 @@ export class ApiHandler {
       return 'No versions with vulnerabilities found';
     }
 
-    // Sort by version number (highest first)
-    validResults.sort((a, b) => {
-      const aNum = parseFloat(a.version);
-      const bNum = parseFloat(b.version);
-      return bNum - aNum;
-    });
+    // Sort by semantic version parts (highest first)
+    validResults.sort((a, b) => this.compareVersionsDesc(a.version, b.version));
 
     const latest = validResults[0];
     return `Recommended latest version to process: iOS ${latest.version} (${latest.vulnerabilities_found} CVEs)`;
+  }
+
+  private compareVersionsDesc(a: string, b: string): number {
+    const aParts = (a || '').split('.').map(n => parseInt(n, 10) || 0);
+    const bParts = (b || '').split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(aParts.length, bParts.length);
+    for (let i = 0; i < len; i++) {
+      const av = aParts[i] || 0;
+      const bv = bParts[i] || 0;
+      if (av !== bv) return bv - av; // descending
+    }
+    return 0;
   }
 
   private async processAllLatestCVEs(headers: Record<string, string>): Promise<Response> {
@@ -983,6 +994,38 @@ export class ApiHandler {
       breakdown[severity] = (breakdown[severity] || 0) + 1;
     });
     return breakdown;
+  }
+
+  private async getDiscoveredIOSReleases(url: URL, headers: Record<string, string>): Promise<Response> {
+    try {
+      const majorFilter = url.searchParams.get('major');
+
+      const response = await fetch(`${this.env.APPLE_SECURITY_BASE_URL}/en-us/100100`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Apple security releases: ${response.status}`);
+      }
+
+      const html = await response.text();
+      const { VulnerabilityScanner } = await import('../services/vulnerability-scanner');
+      const scanner = new VulnerabilityScanner(this.env);
+      const extractMethod = (scanner as any).extractIOSReleaseLinks;
+      const iosReleases = extractMethod.call(scanner, html) as Array<{ version: string; url: string }>;
+
+      const filtered = majorFilter
+        ? iosReleases.filter(r => r.version.startsWith(`${majorFilter}`))
+        : iosReleases;
+
+      return new Response(JSON.stringify({ count: filtered.length, releases: filtered }, null, 2), { headers });
+    } catch (error) {
+      console.error('Failed to discover iOS releases:', error);
+      return new Response(JSON.stringify({ error: 'Failed to discover iOS releases' }), { status: 500, headers });
+    }
   }
 
   private async manualReparse(request: Request, headers: Record<string, string>): Promise<Response> {
@@ -1219,11 +1262,31 @@ export class ApiHandler {
 
   private async findAppleSecurityUrl(version: string): Promise<string | null> {
     try {
-      // First check if we have this version in our database
+      // First check if we have this version in our database.
+      // Validate the cached URL actually references the exact version to avoid stale/mis-cached mismatches (e.g., 18.1 vs 18.1.1)
       const existingRelease = await this.repository.getIOSReleaseByVersion(version);
       if (existingRelease && existingRelease.security_content_url) {
-        console.log(`Found cached URL for iOS ${version}: ${existingRelease.security_content_url}`);
-        return existingRelease.security_content_url;
+        try {
+          const testResp = await fetch(existingRelease.security_content_url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+          });
+          if (testResp.ok) {
+            const body = await testResp.text();
+            const exact = new RegExp(`iOS\\s+${this.escapeRegex(version)}(?![\\d.])`, 'i');
+            if (exact.test(body)) {
+              console.log(`Validated cached URL for iOS ${version}: ${existingRelease.security_content_url}`);
+              return existingRelease.security_content_url;
+            }
+            console.warn(`Cached URL did not validate for iOS ${version}, will rediscover: ${existingRelease.security_content_url}`);
+          } else {
+            console.warn(`Cached URL fetch failed (${testResp.status}) for iOS ${version}, will rediscover`);
+          }
+        } catch (e) {
+          console.warn(`Cached URL validation error for iOS ${version}, will rediscover`, e);
+        }
       }
 
       // Fetch Apple's main security releases page to discover URLs dynamically
@@ -1241,58 +1304,61 @@ export class ApiHandler {
       const html = await response.text();
 
       // Look for exact version matches in iOS security release links
-      // Pattern: <a href="/en-us/######">iOS X.Y.Z and iPadOS X.Y.Z</a>
+      // Pattern: <a href="/en-us/######">iOS X.Y[.Z] [and iPadOS X.Y[.Z]]</a>
+      // Ensure we do NOT match longer versions when searching a shorter one (e.g., avoid 18.1.1 when searching 18.1)
       const exactVersionPattern = new RegExp(
-        `<a[^>]+href="([^"]*\\/en-us\\/\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}(?:\\s+and\\s+iPadOS\\s+${this.escapeRegex(version)})?[^<]*)`,
+        `<a[^>]+href="([^"]*\\/en-us\\/\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}(?![\\d.])(?:\\s+and\\s+iPadOS\\s+\\d+(?:\\.\\d+)*)?[^<]*)`,
         'gi'
       );
 
-      let match = exactVersionPattern.exec(html);
-      if (match) {
-        const relativeUrl = match[1];
-        const url = relativeUrl.startsWith('http') ? relativeUrl : `${this.env.APPLE_SECURITY_BASE_URL}${relativeUrl}`;
-        console.log(`Found exact match for iOS ${version}: ${match[2]} -> ${url}`);
+      exactVersionPattern.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = exactVersionPattern.exec(html)) !== null) {
+        // Validate that the visible text's extracted iOS version exactly equals the requested version
+        const linkText = match[2] || '';
+        const vMatch = linkText.match(/iOS\s+(\d+(?:\.\d+)*)/i);
+        if (vMatch && vMatch[1] === version) {
+          const relativeUrl = match[1];
+          const url = relativeUrl.startsWith('http') ? relativeUrl : `${this.env.APPLE_SECURITY_BASE_URL}${relativeUrl}`;
+          console.log(`Found exact match for iOS ${version}: ${linkText} -> ${url}`);
 
-        // Cache this URL in database for future use
-        try {
-          await this.repository.insertIOSRelease({
-            version: version,
-            release_date: new Date().toISOString().split('T')[0], // Will be updated when parsed
-            security_content_url: url,
-          });
-        } catch (error) {
-          // Ignore duplicate insertion errors
-          console.log(`iOS release ${version} already exists in database`);
+          // Cache this URL in database for future use
+          try {
+            await this.repository.insertIOSRelease({
+              version: version,
+              release_date: new Date().toISOString().split('T')[0], // Will be updated when parsed
+              security_content_url: url,
+            });
+          } catch (error) {
+            // Ignore duplicate insertion errors
+            console.log(`iOS release ${version} already exists in database`);
+          }
+
+          return url;
         }
-
-        return url;
       }
 
       // If exact match not found, try broader patterns (but be more careful)
       const broaderPatterns = [
-        // Look for iOS version followed by word boundary (to avoid partial matches)
-        new RegExp(`<a[^>]+href="([^"]*\\/en-us\\/\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}\\b[^<]*)`, 'gi'),
+        // Look for iOS version with strict non-digit/non-dot boundary to avoid partial matches (e.g., 18.1.1)
+        new RegExp(`<a[^>]+href="([^"]*\\/en-us\\/\\d+[^"]*)"[^>]*>([^<]*iOS\\s+${this.escapeRegex(version)}(?![\\d.])(?:\\s+and\\s+iPadOS\\s+\\d+(?:\\.\\d+)*)?[^<]*)`, 'gi'),
       ];
 
       for (const pattern of broaderPatterns) {
         pattern.lastIndex = 0; // Reset regex
-        const match = pattern.exec(html);
-        if (match) {
-          const relativeUrl = match[1];
-          const url = relativeUrl.startsWith('http') ? relativeUrl : `${this.env.APPLE_SECURITY_BASE_URL}${relativeUrl}`;
-
-          // Verify this is actually the right version by checking if the match text contains extra version info
-          const matchText = match[2].toLowerCase();
-          const versionParts = version.split('.');
-          const majorMinor = versionParts.slice(0, 2).join('.');
-
-          // Avoid matching if the text contains a longer version (e.g., avoid 18.1.1 when looking for 18.1)
-          if (versionParts.length === 2 && matchText.includes(`${version}.`)) {
-            console.log(`Skipping longer version match for iOS ${version}: ${match[2]}`);
+        let patternMatch: RegExpExecArray | null;
+        while ((patternMatch = pattern.exec(html)) !== null) {
+          // Verify this is actually the right version
+          const matchText = patternMatch[2] || '';
+          const vMatch2 = matchText.match(/iOS\s+(\d+(?:\.\d+)*)/i);
+          if (!vMatch2 || vMatch2[1] !== version) {
             continue;
           }
 
-          console.log(`Found match for iOS ${version}: ${match[2]} -> ${url}`);
+          const relativeUrl = patternMatch[1];
+          const url = relativeUrl.startsWith('http') ? relativeUrl : `${this.env.APPLE_SECURITY_BASE_URL}${relativeUrl}`;
+
+          console.log(`Found match for iOS ${version}: ${matchText} -> ${url}`);
 
           // Cache this URL in database
           try {
@@ -1307,6 +1373,29 @@ export class ApiHandler {
 
           return url;
         }
+      }
+
+      // Final fallback: reuse the extractor from VulnerabilityScanner for robust discovery
+      try {
+        const { VulnerabilityScanner } = await import('../services/vulnerability-scanner');
+        const scanner = new VulnerabilityScanner(this.env);
+        const extractMethod = (scanner as any).extractIOSReleaseLinks;
+        const iosReleases = extractMethod.call(scanner, html) as Array<{ version: string; url: string }>;
+        const found = iosReleases.find((r: any) => r.version === version);
+        if (found) {
+          const url = found.url.startsWith('http') ? found.url : `${this.env.APPLE_SECURITY_BASE_URL}${found.url}`;
+          console.log(`Fallback extractor located iOS ${version}: ${url}`);
+          try {
+            await this.repository.insertIOSRelease({
+              version: version,
+              release_date: new Date().toISOString().split('T')[0],
+              security_content_url: url,
+            });
+          } catch {}
+          return url;
+        }
+      } catch (e) {
+        console.warn('Extractor fallback failed:', e);
       }
 
       console.log(`No Apple security URL found for iOS ${version}`);
@@ -1373,11 +1462,26 @@ export class ApiHandler {
       const results = [];
       for (const version of versions) {
         try {
-          // Delete the cached iOS release record to force re-discovery
-          await this.env.DB.prepare("DELETE FROM ios_releases WHERE version = ?").bind(version).run();
+          // 1) Delete relationships first to satisfy foreign key constraints
+          // Delete links by release id
+          await this.env.DB.prepare(
+            "DELETE FROM vulnerability_releases WHERE ios_release_id IN (SELECT id FROM ios_releases WHERE version = ?)"
+          ).bind(version).run();
 
-          // Also delete associated vulnerability records to ensure clean re-parse
-          await this.env.DB.prepare("DELETE FROM vulnerabilities WHERE ios_versions_affected = ?").bind(version).run();
+          // Delete links by vulnerability id (any lingering ones)
+          await this.env.DB.prepare(
+            "DELETE FROM vulnerability_releases WHERE vulnerability_id IN (SELECT id FROM vulnerabilities WHERE ios_versions_affected = ?)"
+          ).bind(version).run();
+
+          // 2) Delete vulnerabilities for this version
+          await this.env.DB.prepare(
+            "DELETE FROM vulnerabilities WHERE ios_versions_affected = ?"
+          ).bind(version).run();
+
+          // 3) Delete the iOS release records for this version
+          await this.env.DB.prepare(
+            "DELETE FROM ios_releases WHERE version = ?"
+          ).bind(version).run();
 
           results.push({
             version,

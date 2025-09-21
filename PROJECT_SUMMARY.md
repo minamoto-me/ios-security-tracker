@@ -82,6 +82,8 @@ A comprehensive automated system built with Cloudflare services that:
 - Historical data preservation
 - Relationship tracking (CVE ↔ iOS releases)
 - **Undefined Value Protection**: Comprehensive null handling prevents database insertion errors
+- **Exact Version Matching**: Avoids 18.1/18.1.1 collisions; validates cached URLs before reuse
+- **Release Discovery API**: `GET /api/apple/ios-releases` for quick visibility of available releases
 
 ### ✅ RESTful API
 - `/api/vulnerabilities` - List with filtering/pagination
@@ -92,6 +94,7 @@ A comprehensive automated system built with Cloudflare services that:
 - **`/api/database/integrity`** - Database integrity monitoring with duplicate checks
 - `/api/health` - System health monitoring
 - `/api/logs` - Processing history
+- `/api/apple/ios-releases` - Discover iOS releases parsed from Apple (supports `?major=18`)
 
 ### ✅ Modern Web Interface
 - **Modern Responsive Design**: Beautiful, mobile-optimized website with enhanced vulnerability modals
@@ -180,6 +183,7 @@ CREATE TABLE processing_logs (
 3. **Configuration**: Update `wrangler.toml` with resource IDs
 4. **Deploy**: `npm run deploy` for Worker, Cloudflare Pages for website
 5. **Verify**: Test API endpoints and cron trigger
+6. **Secrets**: Add `NVD_API_KEY` via `wrangler secret put NVD_API_KEY`
 
 ### 🔍 Testing Strategy
 - Manual API testing with curl
@@ -223,6 +227,7 @@ CREATE TABLE processing_logs (
 - SQL injection prevention (parameterized queries)
 - Rate limiting considerations for NVD API
 - Error handling prevents information disclosure
+- Secrets managed via Worker Secrets (no plaintext keys in wrangler.toml)
 
 ## 🏆 Recent Achievements (2025)
 
@@ -232,6 +237,7 @@ CREATE TABLE processing_logs (
 - ✅ **Database Integrity Monitoring**: Real-time duplicate detection and data validation
 - ✅ **Responsive Design Overhaul**: Modern, mobile-first interface with enhanced readability
 - ✅ **Robust Error Handling**: Comprehensive undefined value protection and graceful degradation
+- ✅ **Comprehensive iOS 18.x Backfill**: Database populated with 18, 18.0.1, 18.1, 18.1.1, 18.2, 18.3(.1/.2), 18.4(.1), 18.5, 18.6(.2), 18.7
 
 ## 🎯 Future Enhancements
 

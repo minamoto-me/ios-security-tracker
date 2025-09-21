@@ -25,6 +25,20 @@ This document tracks the major development sessions and improvements made to the
 - ✅ 3 iOS releases processed (iOS 26, iOS 18.7, iOS 16.7.12)
 - ✅ Database and website now displaying rich Apple security context
 
+### Exact iOS Version Matching & Backfill (September 21, 2025)
+
+**Problem**: Exact version collisions (e.g., 18.1 vs 18.1.1) and missing patch releases in DB.
+
+**Fixes**:
+- Enforced strict exact iOS version matching with negative lookahead (no partial matches).
+- Validated cached URLs against the target version before reuse.
+- Added discovery endpoint `GET /api/apple/ios-releases` to inspect available releases (supports `?major=18`).
+- FK-safe maintenance cleanup in `/admin/clear-cache` (delete relations → vulns → releases).
+- Migrated `NVD_API_KEY` to Worker Secret (removed from wrangler.toml).
+
+**Backfill Outcome**:
+- Populated iOS 18 series comprehensively: 18, 18.0.1, 18.1, 18.1.1, 18.2, 18.3, 18.3.1, 18.3.2, 18.4, 18.4.1, 18.5, 18.6, 18.6.2, 18.7.
+
 ### UI/UX Improvements Session
 
 **Fixed Issues**:

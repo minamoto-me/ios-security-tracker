@@ -4,7 +4,7 @@ import { VulnerabilityScanner } from './services/vulnerability-scanner';
 import { ApiHandler } from './api/handler';
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     try {
       // Initialize database if needed
       await this.initializeDatabase(env);
